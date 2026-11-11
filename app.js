@@ -1034,7 +1034,8 @@
 
   // ── Konto-Alarm: Ausgabenlimit erreicht oder Kampagnen offline ───────────
   // Die stündliche Konto-Prüfung (Repo Meta-Analyse-Tool, scripts/konto-check.mjs)
-  // schreibt in die Tabelle konto_status. Fehlt die Tabelle noch, passiert hier nichts.
+  // legt ihr Ergebnis als _konto/status.json in den privaten Speicher „motive“.
+  // Gibt es die Datei noch nicht, passiert hier nichts.
   const PRUEF_ABSTAND_MS = 10 * 60 * 1000;
   const SEITENTITEL = document.title;
   const alarm = { befund: null, konto: null, gezeigt: null, timer: null };
@@ -1058,8 +1059,10 @@
 
   async function ladeKontoStatus() {
     try {
-      const { data, error } = await db.from('konto_status').select('*').order('geprueft_am', { ascending: false }).limit(1);
-      return error || !data || !data.length ? null : data[0];
+      const { data, error } = await db.storage.from('motive').download('_konto/status.json');
+      if (error || !data) return null;
+      const k = JSON.parse(await data.text());
+      return k && k.geprueft_am ? k : null;
     } catch (e) {
       return null;
     }
