@@ -4,13 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>Kampagnenanalyse</title>
+  <title>Kampagnenanalyse | Kanzleistelle24</title>
+  <link rel="preload" href="raleway-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="merriweather-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main id="app">
-    <section id="login" class="login" hidden>
-      <h1 class="titel">Kampagnenanalyse</h1>
+  <section id="login" class="login" hidden>
+    <div class="login-box">
+      <p class="marke-klein">Kanzleistelle24</p>
+      <h1 class="login-titel">Kampagnenanalyse</h1>
       <form id="login-form" class="login-form">
         <label>E-Mail
           <input type="email" id="email" autocomplete="username" required>
@@ -21,29 +24,36 @@
         <button type="submit" class="knopf">Anmelden</button>
         <p id="login-fehler" class="fehler" hidden></p>
       </form>
-    </section>
+    </div>
+  </section>
 
-    <section id="dashboard" hidden>
-      <header class="kopf">
+  <div id="dashboard" hidden>
+    <header class="kopf">
+      <div class="kopf-innen">
         <div>
+          <p class="marke-klein">Kanzleistelle24</p>
           <h1 class="titel">Kampagnenanalyse</h1>
-          <p id="zeitraum" class="leise">Daten werden geladen …</p>
         </div>
         <div class="kopf-rechts">
-          <label class="feld">Zeitraum
+          <label class="feld feld-hell">Zeitraum
             <select id="tage">
               <option value="7">Letzte 7 Tage</option>
               <option value="30" selected>Letzte 30 Tage</option>
               <option value="90">Letzte 90 Tage</option>
             </select>
           </label>
-          <button id="abmelden" class="knopf knopf-leise" type="button">Abmelden</button>
+          <button id="abmelden" class="knopf knopf-hell" type="button">Abmelden</button>
         </div>
-      </header>
+      </div>
+    </header>
+    <main class="seite">
+      <p id="zeitraum" class="zeitraum">Daten werden geladen …</p>
       <p id="lade-fehler" class="fehler" hidden></p>
       <div id="inhalt"></div>
-    </section>
-  </main>
+    </main>
+  </div>
+
+  <dialog id="detail" class="detail-fenster" aria-label="Anzeige im Detail"></dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
