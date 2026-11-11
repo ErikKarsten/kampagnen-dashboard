@@ -955,6 +955,7 @@
       schrittAlle(D));
     beobachte(inhalt);
     aktualisiereLeiste();
+    if (alarm.konto) zeichneAlarmLeiste(); // Restlaufzeit braucht die Tageszahlen
   }
 
   const ladeansicht = () => h('div', { class: 'skelett', 'aria-hidden': 'true' },
@@ -1031,12 +1032,191 @@
   }));
   zeigeZeitraum();
 
+  // ── Konto-Alarm: Ausgabenlimit erreicht oder Kampagnen offline ───────────
+  // Die stündliche Konto-Prüfung (Repo Meta-Analyse-Tool, scripts/konto-check.mjs)
+  // schreibt in die Tabelle konto_status. Fehlt die Tabelle noch, passiert hier nichts.
+  const PRUEF_ABSTAND_MS = 10 * 60 * 1000;
+  const SEITENTITEL = document.title;
+  const alarm = { befund: null, konto: null, gezeigt: null, timer: null };
+
+  const zeitpunkt = (iso, zone) => {
+    if (!iso) return '–';
+    const z = zone || 'Europe/Berlin';
+    const tag = (d) => new Intl.DateTimeFormat('de-DE', { timeZone: z, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    const d = new Date(iso);
+    const uhr = new Intl.DateTimeFormat('de-DE', { timeZone: z, hour: '2-digit', minute: '2-digit' }).format(d);
+    const heute = new Date();
+    const gestern = new Date(Date.now() - 864e5);
+    if (tag(d) === tag(heute)) return `heute ${uhr} Uhr`;
+    if (tag(d) === tag(gestern)) return `gestern ${uhr} Uhr`;
+    return `am ${tag(d)} um ${uhr} Uhr`;
+  };
+  const stundeIn = (iso, zone) => {
+    const teile = new Intl.DateTimeFormat('de-DE', { timeZone: zone || 'Europe/Berlin', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(iso));
+    return Number((teile.find((t) => t.type === 'hour') || {}).value);
+  };
+
+  async function ladeKontoStatus() {
+    try {
+      const { data, error } = await db.from('konto_status').select('*').order('geprueft_am', { ascending: false }).limit(1);
+      return error || !data || !data.length ? null : data[0];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Was ist los? Liefert null, wenn alles in Ordnung ist.
+  function bewerteKonto(k) {
+    const limit = Number(k.ausgabenlimit) || 0;
+    const ausgegeben = Number(k.ausgegeben) || 0;
+    const status = k.kontostatus == null ? 1 : Number(k.kontostatus);
+    const aktive = k.aktive_anzeigen == null ? null : Number(k.aktive_anzeigen);
+    const ZAHLUNG = ['Öffne den Meta Werbeanzeigenmanager.', 'Geh links im Menü zu „Abrechnung und Zahlungen“.'];
+
+    if (limit > 0 && ausgegeben >= limit) {
+      return {
+        stufe: 'alarm', schluessel: 'limit', grund: 'Das Ausgabenlimit des Werbekontos ist erreicht.',
+        text: `Im Werbekonto ist ein Ausgabenlimit von ${euro(limit)} eingestellt, und davon sind ${euro(ausgegeben)} ausgegeben. Meta spielt deshalb keine Anzeigen mehr aus. Solange das so bleibt, kommen keine neuen Leads rein.`,
+        balken: { ausgegeben, limit },
+        schritte: [...ZAHLUNG, 'Öffne die „Zahlungseinstellungen“ und erhöhe beim „Ausgabenlimit für das Konto“ den Betrag, setz es zurück oder entferne es.'],
+        nachher: 'Danach laufen die Anzeigen meist innerhalb weniger Minuten wieder an.',
+      };
+    }
+    if (![1, 8, 9].includes(status)) { // 1 aktiv; 8 und 9 laufen noch, siehe Warnung unten
+      const TEXT = {
+        2: ['Meta hat das Werbekonto deaktiviert.', 'Solange das Konto deaktiviert ist, spielt Meta keine Anzeigen aus.', ['Öffne den Meta Werbeanzeigenmanager und lies die Meldung von Meta oben auf der Seite.', 'Prüf unter „Kontoqualität“, warum das Konto deaktiviert wurde, und leg dort bei Bedarf Einspruch ein.']],
+        3: ['Eine Zahlung ist offen oder fehlgeschlagen.', 'Meta hat eine Zahlung nicht einziehen können und spielt deshalb keine Anzeigen mehr aus.', [...ZAHLUNG, 'Begleiche den offenen Betrag oder hinterleg eine funktionierende Zahlungsmethode.']],
+        7: ['Meta prüft das Werbekonto gerade.', 'Während der Prüfung spielt Meta keine Anzeigen aus.', ['Öffne den Meta Werbeanzeigenmanager und lies die Meldung von Meta.', 'Prüf unter „Kontoqualität“, ob Meta noch Angaben von dir braucht.']],
+        100: ['Das Werbekonto wird gerade geschlossen.', 'Über ein Konto, das geschlossen wird, laufen keine Anzeigen.', ['Prüf im Meta Business Manager, wer das Konto schließen lässt und ob das so gewollt ist.']],
+        101: ['Das Werbekonto ist geschlossen.', 'Über ein geschlossenes Konto laufen keine Anzeigen.', ['Prüf im Meta Business Manager, ob das Konto wieder geöffnet werden kann oder ein anderes Konto genutzt werden soll.']],
+      }[status] || [`Das Werbekonto ist nicht aktiv (Meta-Status ${status}).`, 'Meta spielt im Moment keine Anzeigen aus.', ['Öffne den Meta Werbeanzeigenmanager und lies die Meldung von Meta oben auf der Seite.']];
+      return { stufe: 'alarm', schluessel: `konto-${status}`, grund: TEXT[0], text: TEXT[1], schritte: TEXT[2], nachher: 'Sobald Meta das Konto wieder freigibt, laufen die Anzeigen weiter.' };
+    }
+    if (aktive > 0 && Number(k.impressionen_heute) === 0 && stundeIn(k.geprueft_am, k.zeitzone) >= 10) {
+      const zp = zeitpunkt(k.geprueft_am, k.zeitzone);
+      return {
+        stufe: 'alarm', schluessel: 'offline', grund: 'Heute wurde noch keine einzige Anzeige ausgespielt.',
+        text: zp.startsWith('heute ')
+          ? `Im Konto sind ${z0(aktive)} Anzeigen aktiv, aber bis ${zp.slice(6)} hat Meta heute keine davon ausgespielt. Die Kampagnen sind also offline.`
+          : `Im Konto sind ${z0(aktive)} Anzeigen aktiv, aber bei der letzten Prüfung (${zp}) hatte Meta an diesem Tag keine davon ausgespielt. Die Kampagnen waren also offline.`,
+        schritte: ['Öffne den Meta Werbeanzeigenmanager und schau in der Spalte „Auslieferung“, was dort steht.', 'Prüf unter „Abrechnung und Zahlungen“, ob eine Zahlung fehlgeschlagen oder ein Limit erreicht ist.', 'Prüf, ob Anzeigen abgelehnt wurden.'],
+        nachher: 'Sobald wieder ausgespielt wird, verschwindet diese Meldung nach der nächsten Prüfung.',
+      };
+    }
+    if (status === 8 || status === 9) {
+      return {
+        stufe: 'warnung', schluessel: `konto-${status}`, grund: 'Eine Zahlung ist offen.',
+        kurz: 'Eine Zahlung ist offen. Die Anzeigen laufen noch, aber nicht mehr lange.',
+        text: status === 9
+          ? 'Meta konnte eine Zahlung nicht einziehen. Die Anzeigen laufen noch während einer Kulanzfrist, danach stoppt Meta sie.'
+          : 'Meta wickelt gerade eine Zahlung ab. Wenn sie nicht klappt, stoppt Meta die Anzeigen.',
+        schritte: [...ZAHLUNG, 'Prüf, ob die Zahlungsmethode funktioniert, und begleiche offene Beträge.'],
+      };
+    }
+    if (limit > 0 && ausgegeben >= limit * 0.9) {
+      const rest = limit - ausgegeben;
+      const D = zustand.daten;
+      const letzte = D && D.verlauf ? D.verlauf.slice(-7) : [];
+      const proTag = letzte.length ? letzte.reduce((s, t) => s + t.ausgaben, 0) / letzte.length : 0;
+      const tage = proTag > 0 ? rest / proTag : null;
+      const reicht = tage == null ? '' : tage < 1 ? ' Bei den Ausgaben der letzten Tage reicht das nicht mal mehr einen Tag.' : ` Bei den Ausgaben der letzten Tage reicht das noch etwa ${z0(Math.floor(tage))} ${Math.floor(tage) === 1 ? 'Tag' : 'Tage'}.`;
+      return {
+        stufe: 'warnung', schluessel: 'limit-bald', grund: 'Das Ausgabenlimit ist fast erreicht.',
+        kurz: `Das Ausgabenlimit ist fast erreicht: noch ${euro(rest)} übrig.${reicht}`,
+        text: `Von ${euro(limit)} sind ${euro(ausgegeben)} ausgegeben, es bleiben noch ${euro(rest)}.${reicht} Ist das Limit erreicht, stoppt Meta alle Anzeigen.`,
+        balken: { ausgegeben, limit },
+        schritte: [...ZAHLUNG, 'Erhöhe in den „Zahlungseinstellungen“ rechtzeitig das „Ausgabenlimit für das Konto“.'],
+      };
+    }
+    return null;
+  }
+
+  function adsManagerLink(k) {
+    const id = String(k.konto_id || '').replace(/^act_/, '');
+    return id ? `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(id)}` : 'https://adsmanager.facebook.com/';
+  }
+
+  function zeigeAlarmFenster() {
+    const b = alarm.befund;
+    const k = alarm.konto;
+    if (!b || !k) return;
+    const fenster = $('#alarm');
+    const istAlarm = b.stufe === 'alarm';
+    const alt = Date.now() - new Date(k.geprueft_am).getTime() > 3 * 3600 * 1000;
+    fenster.className = 'alarm-fenster ' + b.stufe;
+    fenster.replaceChildren(
+      h('div', { class: 'alarm-kopf' },
+        h('span', { class: 'alarm-symbol', 'aria-hidden': 'true' }, '!'),
+        h('div', null,
+          h('p', { class: 'alarm-eyebrow' }, istAlarm ? 'Alarm' : 'Warnung'),
+          h('h2', { id: 'alarm-titel', tabindex: '-1', autofocus: true }, istAlarm ? 'Deine Kampagnen sind offline' : 'Bald laufen die Kampagnen nicht mehr'))),
+      h('div', { class: 'alarm-inhalt' },
+        h('p', { class: 'alarm-grund' }, b.grund),
+        h('p', null, b.text),
+        b.balken ? h('div', { class: 'limit' },
+          h('div', { class: 'limit-balken', role: 'img', 'aria-label': `${euro(b.balken.ausgegeben)} von ${euro(b.balken.limit)} ausgegeben` },
+            h('span', { style: `width:${Math.min(100, (100 * b.balken.ausgegeben) / b.balken.limit).toFixed(1)}%` })),
+          h('p', { class: 'limit-text' }, h('b', null, euro(b.balken.ausgegeben)), ` von ${euro(b.balken.limit)} Ausgabenlimit`)) : null,
+        h('p', { class: 'alarm-zwischen' }, 'So behebst du es'),
+        h('ol', { class: 'alarm-schritte' }, b.schritte.map((t) => h('li', null, t))),
+        b.nachher ? h('p', null, b.nachher) : null,
+        h('p', { class: 'meta' }, `Stand: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Das Werbekonto wird stündlich von 6 bis 23 Uhr geprüft.`),
+        alt ? h('p', { class: 'meta' }, 'Die letzte Prüfung ist schon länger her. Vielleicht ist das Problem inzwischen behoben.') : null),
+      h('div', { class: 'alarm-knoepfe' },
+        h('a', { class: 'knopf ' + (istAlarm ? 'knopf-rot' : 'knopf-warn'), href: adsManagerLink(k), target: '_blank', rel: 'noopener noreferrer' }, 'Werbeanzeigenmanager öffnen ↗'),
+        h('button', { class: 'knopf knopf-rand', type: 'button', onclick: () => fenster.close() }, 'Verstanden')));
+    versteckeTip();
+    if ($('#detail').open) $('#detail').close();
+    if (!fenster.open) fenster.showModal();
+    fenster.scrollTop = 0;
+  }
+
+  function zeichneAlarmLeiste() {
+    const leiste = $('#alarm-leiste');
+    const b = alarm.konto ? bewerteKonto(alarm.konto) : null;
+    alarm.befund = b;
+    document.title = b && b.stufe === 'alarm' ? `⚠ Kampagnen offline | ${SEITENTITEL}` : SEITENTITEL;
+    if (!b) { leiste.hidden = true; leiste.replaceChildren(); return; }
+    leiste.className = 'alarm-leiste ' + b.stufe;
+    leiste.replaceChildren(h('div', { class: 'alarm-leiste-innen' },
+      h('span', { class: 'puls', 'aria-hidden': 'true' }),
+      h('span', null, b.stufe === 'alarm' ? h('b', null, 'Alarm: Deine Kampagnen sind offline. ') : h('b', null, 'Achtung: '), b.stufe === 'alarm' ? b.grund : b.kurz),
+      h('button', { type: 'button', onclick: zeigeAlarmFenster }, b.stufe === 'alarm' ? 'Was jetzt?' : 'Details')));
+    leiste.hidden = false;
+  }
+
+  async function pruefeKonto(beimOeffnen) {
+    const k = await ladeKontoStatus();
+    if (!k) { alarm.konto = null; zeichneAlarmLeiste(); return; }
+    alarm.konto = k;
+    zeichneAlarmLeiste();
+    const b = alarm.befund;
+    // Pop-up bei jedem Öffnen der Seite, solange ein Alarm besteht,
+    // und zwischendurch, sobald ein neuer Alarm dazukommt
+    if (b && b.stufe === 'alarm' && (beimOeffnen || alarm.gezeigt !== b.schluessel)) zeigeAlarmFenster();
+    alarm.gezeigt = b && b.stufe === 'alarm' ? b.schluessel : null;
+  }
+
+  function starteKontoPruefung() {
+    stoppeKontoPruefung();
+    pruefeKonto(true);
+    alarm.timer = setInterval(() => pruefeKonto(false), PRUEF_ABSTAND_MS);
+  }
+  function stoppeKontoPruefung() {
+    if (alarm.timer) clearInterval(alarm.timer);
+    alarm.timer = null;
+    alarm.konto = null;
+    alarm.gezeigt = null;
+    zeichneAlarmLeiste();
+    if ($('#alarm').open) $('#alarm').close();
+  }
+  $('#alarm').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
   // ── Anmeldung ─────────────────────────────────────────────────────────────
   function zeige(angemeldet) {
     $('#login').hidden = angemeldet;
     $('#dashboard').hidden = !angemeldet;
-    if (angemeldet) aktualisiere();
-    else $('#email').focus();
+    if (angemeldet) { aktualisiere(); starteKontoPruefung(); } else { stoppeKontoPruefung(); $('#email').focus(); }
   }
 
   $('#login-form').addEventListener('submit', async (ev) => {

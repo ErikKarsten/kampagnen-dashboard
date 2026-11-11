@@ -26,6 +26,8 @@
   --schlecht: #b42318;
   --schlecht-hell: #fbeae8;
   --neutral-hell: #eef0f3;
+  --warnung: #9a5b00;
+  --warnung-hell: #fff3d6;
   --schatten: 0 1px 2px rgba(0, 36, 74, .05), 0 6px 22px rgba(0, 36, 74, .07);
   --schatten-hoch: 0 2px 6px rgba(0, 36, 74, .08), 0 18px 44px rgba(0, 36, 74, .15);
   --sans: "Raleway", "Helvetica Neue", Arial, sans-serif;
@@ -336,6 +338,49 @@ td.kname { white-space: normal; min-width: 220px; }
 .sk-hoch { height: 320px; }
 @keyframes schimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
+/* Konto-Alarm */
+.alarm-leiste { background: var(--schlecht); color: var(--weiss); }
+.alarm-leiste.warnung { background: var(--warnung-hell); color: #5c3700; border-bottom: 1px solid #efd59a; }
+.alarm-leiste-innen { max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 15px; }
+.alarm-leiste .puls { flex: none; width: 12px; height: 12px; background: var(--weiss); animation: alarm-puls 1.4s ease-out infinite; }
+.alarm-leiste.warnung .puls { background: var(--warnung); animation-name: warn-puls; }
+.alarm-leiste button { margin-left: auto; padding: 8px 16px; background: var(--weiss); color: var(--schlecht); border: 0; font-weight: 700; cursor: pointer; }
+.alarm-leiste.warnung button { background: var(--warnung); color: var(--weiss); }
+.alarm-leiste button:focus-visible { outline: 3px solid var(--navy); outline-offset: 2px; }
+@keyframes alarm-puls { 0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .8); } 70% { box-shadow: 0 0 0 12px rgba(255, 255, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); } }
+@keyframes warn-puls { 0% { box-shadow: 0 0 0 0 rgba(154, 91, 0, .6); } 70% { box-shadow: 0 0 0 12px rgba(154, 91, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(154, 91, 0, 0); } }
+.alarm-fenster { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 0; background: var(--weiss); color: var(--text); box-shadow: 0 30px 90px rgba(60, 0, 0, .4); }
+.alarm-fenster[open] { animation: alarm-auf .45s var(--tempo); }
+@keyframes alarm-auf { 0% { opacity: 0; transform: scale(.94); } 60% { transform: scale(1.015); } 100% { opacity: 1; transform: none; } }
+.alarm-fenster::backdrop { background: rgba(70, 8, 4, .62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.alarm-fenster.warnung::backdrop { background: rgba(0, 36, 74, .55); }
+.alarm-kopf { display: flex; align-items: center; gap: 18px; padding: 22px 26px; background: var(--schlecht); color: var(--weiss); }
+.alarm-fenster.warnung .alarm-kopf { background: var(--warnung); }
+.alarm-symbol { flex: none; display: grid; place-items: center; width: 54px; height: 54px; background: var(--weiss); color: var(--schlecht); font-size: 32px; font-weight: 700; line-height: 1; animation: alarm-puls 1.4s ease-out infinite; }
+.alarm-fenster.warnung .alarm-symbol { color: var(--warnung); }
+.alarm-eyebrow { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; opacity: .9; }
+.alarm-kopf h2 { margin: 2px 0 0; font-family: var(--serif); font-weight: 700; font-size: 22px; line-height: 1.25; }
+.alarm-kopf h2:focus { outline: none; }
+.alarm-inhalt { padding: 22px 26px 6px; }
+.alarm-inhalt p { margin: 0 0 12px; }
+.alarm-grund { font-size: 18px; font-weight: 700; color: var(--schlecht); }
+.alarm-fenster.warnung .alarm-grund { color: var(--warnung); }
+.limit { margin: 4px 0 16px; }
+.limit-balken { height: 12px; background: var(--schlecht-hell); }
+.limit-balken span { display: block; height: 100%; background: var(--schlecht); }
+.alarm-fenster.warnung .limit-balken { background: var(--warnung-hell); }
+.alarm-fenster.warnung .limit-balken span { background: var(--warnung); }
+.limit-text { margin: 6px 0 0 !important; font-size: 14px; color: var(--leise); }
+.limit-text b { color: var(--text); }
+.alarm-zwischen { margin: 18px 0 8px !important; font-family: var(--serif); font-weight: 700; font-size: 17px; color: var(--navy); }
+.alarm-schritte { margin: 0 0 14px; padding-left: 22px; }
+.alarm-schritte li + li { margin-top: 6px; }
+.alarm-knoepfe { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 26px 24px; }
+.knopf-rot { background: var(--schlecht); border-color: var(--schlecht); }
+.knopf-rot:hover { background: #8f1c13; border-color: #8f1c13; }
+.knopf-warn { background: var(--warnung); border-color: var(--warnung); }
+.knopf-warn:hover { background: #7a4800; border-color: #7a4800; }
+
 /* Detail-Fenster */
 .detail-fenster { width: min(1120px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 0; background: var(--weiss); color: var(--text); box-shadow: 0 30px 90px rgba(0, 20, 50, .35); }
 .detail-fenster[open] { animation: auftauchen .3s var(--tempo); }
@@ -432,4 +477,10 @@ details.detail-mehr summary { cursor: pointer; font-weight: 700; color: var(--na
   .begriffe { grid-template-columns: 1fr; gap: 4px; }
   .begriffe dd { margin-bottom: 10px; }
   .saeulen-flaeche { min-height: 180px; }
+  .alarm-leiste-innen { padding: 12px 16px; }
+  .alarm-kopf { padding: 18px; gap: 14px; }
+  .alarm-kopf h2 { font-size: 19px; }
+  .alarm-inhalt { padding: 18px 18px 4px; }
+  .alarm-knoepfe { padding: 8px 18px 20px; }
+  .alarm-knoepfe .knopf { flex: 1 1 100%; }
 }
