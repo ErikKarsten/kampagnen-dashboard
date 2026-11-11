@@ -1075,13 +1075,31 @@
     const status = k.kontostatus == null ? 1 : Number(k.kontostatus);
     const aktive = k.aktive_anzeigen == null ? null : Number(k.aktive_anzeigen);
     const ZAHLUNG = ['Öffne den Meta Werbeanzeigenmanager.', 'Geh links im Menü zu „Abrechnung und Zahlungen“.'];
+    const betrag = (v) => (Math.abs(v) < 1000 ? euro2(v) : euro(v));
+    const rest = limit > 0 ? limit - ausgegeben : null;
+    // Bei sehr kleinem Rest spielt Meta schon so gut wie nichts mehr aus
+    const knapp = limit > 0 && rest <= Math.max(25, limit * 0.02);
+    const zahlungOffen = status === 8 || status === 9;
+    const zahlungHinweis = status === 9
+      ? 'Außerdem ist eine Zahlung offen: Meta konnte eine Zahlung nicht einziehen und hat eine Kulanzfrist gestartet. Läuft sie ab, stoppt Meta alle Anzeigen.'
+      : 'Außerdem wickelt Meta gerade eine Zahlung ab. Klappt sie nicht, stoppt Meta die Anzeigen.';
+    const heuteSatz = k.impressionen_heute != null && k.geprueft_am
+      ? ` Heute gab es bis ${zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '')} erst ${z0(Number(k.impressionen_heute))} Einblendungen.`
+      : '';
 
-    if (limit > 0 && ausgegeben >= limit) {
+    if (limit > 0 && (ausgegeben >= limit || knapp)) {
+      const erreicht = ausgegeben >= limit;
       return {
-        stufe: 'alarm', schluessel: 'limit', grund: 'Das Ausgabenlimit des Werbekontos ist erreicht.',
-        text: `Im Werbekonto ist ein Ausgabenlimit von ${euro(limit)} eingestellt, und davon sind ${euro(ausgegeben)} ausgegeben. Meta spielt deshalb keine Anzeigen mehr aus. Solange das so bleibt, kommen keine neuen Leads rein.`,
+        stufe: 'alarm', schluessel: 'limit',
+        titel: erreicht ? 'Deine Kampagnen sind offline' : 'Deine Kampagnen laufen so gut wie nicht mehr',
+        grund: erreicht ? 'Das Ausgabenlimit des Werbekontos ist erreicht.' : `Das Ausgabenlimit ist so gut wie erreicht, es bleiben nur noch ${betrag(Math.max(0, rest))}.`,
+        text: erreicht
+          ? `Im Werbekonto ist ein Ausgabenlimit von ${betrag(limit)} eingestellt, und davon sind ${betrag(ausgegeben)} ausgegeben. Meta spielt deshalb keine Anzeigen mehr aus. Solange das so bleibt, kommen keine neuen Leads rein.${heuteSatz}`
+          : `Im Werbekonto ist ein Ausgabenlimit von ${betrag(limit)} eingestellt, und davon sind ${betrag(ausgegeben)} ausgegeben. Mit dem kleinen Rest spielt Meta die Anzeigen kaum noch aus und stoppt sie ganz, sobald er verbraucht ist.${heuteSatz}`,
+        zusatz: zahlungOffen ? zahlungHinweis : null,
         balken: { ausgegeben, limit },
-        schritte: [...ZAHLUNG, 'Öffne die „Zahlungseinstellungen“ und erhöhe beim „Ausgabenlimit für das Konto“ den Betrag, setz es zurück oder entferne es.'],
+        schritte: [...ZAHLUNG, 'Öffne die „Zahlungseinstellungen“ und erhöhe beim „Ausgabenlimit für das Konto“ den Betrag, setz es zurück oder entferne es.',
+          ...(zahlungOffen ? ['Begleiche dort auch den offenen Betrag oder hinterleg eine funktionierende Zahlungsmethode.'] : [])],
         nachher: 'Danach laufen die Anzeigen meist innerhalb weniger Minuten wieder an.',
       };
     }
@@ -1152,14 +1170,15 @@
         h('span', { class: 'alarm-symbol', 'aria-hidden': 'true' }, '!'),
         h('div', null,
           h('p', { class: 'alarm-eyebrow' }, istAlarm ? 'Alarm' : 'Warnung'),
-          h('h2', { id: 'alarm-titel', tabindex: '-1', autofocus: true }, istAlarm ? 'Deine Kampagnen sind offline' : 'Bald laufen die Kampagnen nicht mehr'))),
+          h('h2', { id: 'alarm-titel', tabindex: '-1', autofocus: true }, b.titel || (istAlarm ? 'Deine Kampagnen sind offline' : 'Bald laufen die Kampagnen nicht mehr')))),
       h('div', { class: 'alarm-inhalt' },
         h('p', { class: 'alarm-grund' }, b.grund),
         h('p', null, b.text),
+        b.zusatz ? h('p', { class: 'alarm-zusatz' }, b.zusatz) : null,
         b.balken ? h('div', { class: 'limit' },
           h('div', { class: 'limit-balken', role: 'img', 'aria-label': `${euro(b.balken.ausgegeben)} von ${euro(b.balken.limit)} ausgegeben` },
             h('span', { style: `width:${Math.min(100, (100 * b.balken.ausgegeben) / b.balken.limit).toFixed(1)}%` })),
-          h('p', { class: 'limit-text' }, h('b', null, euro(b.balken.ausgegeben)), ` von ${euro(b.balken.limit)} Ausgabenlimit`)) : null,
+          h('p', { class: 'limit-text' }, h('b', null, (b.balken.limit < 1000 ? euro2 : euro)(b.balken.ausgegeben)), ` von ${(b.balken.limit < 1000 ? euro2 : euro)(b.balken.limit)} Ausgabenlimit`)) : null,
         h('p', { class: 'alarm-zwischen' }, 'So behebst du es'),
         h('ol', { class: 'alarm-schritte' }, b.schritte.map((t) => h('li', null, t))),
         b.nachher ? h('p', null, b.nachher) : null,
@@ -1183,7 +1202,7 @@
     leiste.className = 'alarm-leiste ' + b.stufe;
     leiste.replaceChildren(h('div', { class: 'alarm-leiste-innen' },
       h('span', { class: 'puls', 'aria-hidden': 'true' }),
-      h('span', null, b.stufe === 'alarm' ? h('b', null, 'Alarm: Deine Kampagnen sind offline. ') : h('b', null, 'Achtung: '), b.stufe === 'alarm' ? b.grund : b.kurz),
+      h('span', null, b.stufe === 'alarm' ? h('b', null, `Alarm: ${b.titel || 'Deine Kampagnen sind offline'}. `) : h('b', null, 'Achtung: '), b.stufe === 'alarm' ? b.grund : b.kurz),
       h('button', { type: 'button', onclick: zeigeAlarmFenster }, b.stufe === 'alarm' ? 'Was jetzt?' : 'Details')));
     leiste.hidden = false;
   }

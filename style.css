@@ -365,6 +365,7 @@ td.kname { white-space: normal; min-width: 220px; }
 .alarm-inhalt p { margin: 0 0 12px; }
 .alarm-grund { font-size: 18px; font-weight: 700; color: var(--schlecht); }
 .alarm-fenster.warnung .alarm-grund { color: var(--warnung); }
+.alarm-zusatz { padding: 10px 12px; background: var(--warnung-hell); color: #5c3700; font-weight: 600; }
 .limit { margin: 4px 0 16px; }
 .limit-balken { height: 12px; background: var(--schlecht-hell); }
 .limit-balken span { display: block; height: 100%; background: var(--schlecht); }
