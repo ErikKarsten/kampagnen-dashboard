@@ -2,5 +2,5 @@
 window.KONFIG = {
   supabaseUrl: 'https://armykuwzkjsqobwlvbdi.supabase.co',
   // Supabase → Project Settings → API Keys → „Publishable key“ (beginnt mit sb_publishable_)
-  supabaseKey: 'HIER_PUBLISHABLE_KEY_EINFUEGEN',
+  supabaseKey: 'sb_publishable_9f9qFHBxD8iFqcjvBYoJaQ_Ag-LdEiE',
 };
