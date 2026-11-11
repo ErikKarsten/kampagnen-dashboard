@@ -1471,7 +1471,7 @@
 
   async function pushProbe() {
     const reg = await dienstRegistrieren();
-    if (reg) await reg.showNotification('🔴 Kampagnen offline (Probe)', { body: 'So sieht ein Alarm aus. Ein Klick darauf öffnet die Kampagnenanalyse.', icon: 'icon-192.png', tag: 'kampagnen-probe' });
+    if (reg) await reg.showNotification('🔴 Kampagnen offline (Probe)', { body: 'So sieht ein Alarm aus. Ein Klick darauf öffnet die Kampagnenanalyse.', icon: 'icon-192.png', tag: 'kampagnen-probe', renotify: true, silent: false });
   }
 
   function zeigePushKnopf() {
@@ -1524,7 +1524,9 @@
         h('p', { class: 'push-zwischen' }, 'Gut zu wissen'),
         h('ul', { class: 'push-liste klein' },
           h('li', null, 'Am Mac müssen Mitteilungen für deinen Browser erlaubt sein: Systemeinstellungen → Mitteilungen → Safari bzw. Google Chrome. Stell dort den Stil auf „Hinweise“, dann bleibt der Alarm stehen, bis du ihn wegklickst.'),
-          h('li', null, 'Bei Chrome muss das Programm laufen, ein Fenster muss aber nicht offen sein.'),
+          h('li', null, 'Für den Ton schalte an derselben Stelle „Ton für Mitteilungen abspielen“ ein. Im Fokus-Modus „Nicht stören“ bleibt der Mac still.'),
+          h('li', null, 'Die Seite muss dafür nicht offen sein. Bei Chrome muss das Programm laufen, ein Fenster braucht es nicht. Safari zeigt die Mitteilung auch, wenn Safari ganz geschlossen ist.'),
+          h('li', null, 'Ist die Seite offen, erscheint zusätzlich sofort das rote Pop-up mit Sirene.'),
           h('li', null, 'Jedes Gerät und jeder Browser wird einzeln eingeschaltet.'))));
     if (!fenster.open) fenster.showModal();
   }
@@ -1536,6 +1538,14 @@
     zeigePushKnopf();
   }
   $('#benachrichtigungen').addEventListener('click', () => zeichnePushFenster());
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (!e.data || e.data.typ !== 'konto-pruefen' || $('#dashboard').hidden) return;
+      // gleich und nach gut einer Minute noch einmal (der Stand wird bis zu 60 s zwischengespeichert)
+      setTimeout(() => pruefeKonto(false), 3000);
+      setTimeout(() => pruefeKonto(false), 65000);
+    });
+  }
   $('#push').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
   // ── Anmeldung ─────────────────────────────────────────────────────────────
