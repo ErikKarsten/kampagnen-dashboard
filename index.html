@@ -4,16 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#00346a">
   <title>Kampagnenanalyse | Kanzleistelle24</title>
-  <link rel="preload" href="raleway-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="raleway-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="raleway-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="merriweather-700.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="style.css?v=2026-11-11">
+  <link rel="stylesheet" href="style.css?v=2026-11-11-2">
 </head>
 <body>
   <section id="login" class="login" hidden>
     <div class="login-box">
       <p class="marke-klein">Kanzleistelle24</p>
       <h1 class="login-titel">Kampagnenanalyse</h1>
+      <p class="login-text">Melde dich an, um zu sehen, wie viele Leads deine Meta-Anzeigen bringen und warum.</p>
       <form id="login-form" class="login-form">
         <label>E-Mail
           <input type="email" id="email" autocomplete="username" required>
@@ -21,8 +24,8 @@
         <label>Passwort
           <input type="password" id="passwort" autocomplete="current-password" required>
         </label>
-        <button type="submit" class="knopf">Anmelden</button>
-        <p id="login-fehler" class="fehler" hidden></p>
+        <button type="submit" id="login-knopf" class="knopf knopf-voll">Anmelden</button>
+        <p id="login-fehler" class="fehler" role="alert" hidden></p>
       </form>
     </div>
   </section>
@@ -30,33 +33,45 @@
   <div id="dashboard" hidden>
     <header class="kopf">
       <div class="kopf-innen">
-        <div>
+        <div class="kopf-titel">
           <p class="marke-klein">Kanzleistelle24</p>
           <h1 class="titel">Kampagnenanalyse</h1>
+          <p id="zeitraum" class="zeitraum">Daten werden geladen …</p>
         </div>
         <div class="kopf-rechts">
-          <label class="feld feld-hell">Zeitraum
-            <select id="tage">
-              <option value="7">Letzte 7 Tage</option>
-              <option value="30" selected>Letzte 30 Tage</option>
-              <option value="90">Letzte 90 Tage</option>
-            </select>
-          </label>
+          <div class="zeitwahl" role="group" aria-label="Zeitraum wählen">
+            <button type="button" data-tage="7" aria-pressed="false">7 Tage</button>
+            <button type="button" data-tage="30" aria-pressed="true">30 Tage</button>
+            <button type="button" data-tage="90" aria-pressed="false">90 Tage</button>
+          </div>
           <button id="abmelden" class="knopf knopf-hell" type="button">Abmelden</button>
         </div>
       </div>
     </header>
+
+    <nav class="schritte" aria-label="Schritte des Berichts">
+      <div class="schritte-innen">
+        <a href="#schritt-ueberblick"><span class="nr">1</span>Überblick</a>
+        <a href="#schritt-gut"><span class="nr">2</span>Was Leads bringt</a>
+        <a href="#schritt-schlecht"><span class="nr">3</span>Was hakt</a>
+        <a href="#schritt-motive"><span class="nr">4</span>Motive</a>
+        <a href="#schritt-alle"><span class="nr">5</span>Alle Anzeigen</a>
+        <button type="button" id="anleitung" class="schritte-hilfe">Anleitung</button>
+      </div>
+      <div class="fortschritt" aria-hidden="true"><span id="fortschritt-balken"></span></div>
+    </nav>
+
     <main class="seite">
-      <p id="zeitraum" class="zeitraum">Daten werden geladen …</p>
-      <p id="lade-fehler" class="fehler" hidden></p>
+      <p id="lade-fehler" class="fehler-box" role="alert" hidden></p>
       <div id="inhalt"></div>
     </main>
   </div>
 
+  <div id="tooltip" class="tooltip" hidden></div>
   <dialog id="detail" class="detail-fenster" aria-label="Anzeige im Detail"></dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=2026-11-11"></script>
+  <script src="app.js?v=2026-11-11-2"></script>
 </body>
 </html>
