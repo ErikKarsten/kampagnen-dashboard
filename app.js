@@ -1033,12 +1033,13 @@
   zeigeZeitraum();
 
   // ── Konto-Alarm: Ausgabenlimit erreicht oder Kampagnen offline ───────────
-  // Die stündliche Konto-Prüfung (Repo Meta-Analyse-Tool, scripts/konto-check.mjs)
-  // legt ihr Ergebnis als _konto/status.json in den privaten Speicher „motive“.
-  // Gibt es die Datei noch nicht, passiert hier nichts.
-  const PRUEF_ABSTAND_MS = 10 * 60 * 1000;
+  // Jede Minute fragt die Seite live bei Meta nach, über die Supabase-Funktion
+  // „konto-live“ (Repo Meta-Analyse-Tool). Gibt es die Funktion noch nicht oder
+  // klappt es gerade nicht, nimmt sie den Stand der stündlichen Prüfung aus
+  // _konto/status.json im privaten Speicher „motive“. Fehlt beides, passiert nichts.
+  const PRUEF_ABSTAND_MS = 60 * 1000;
   const SEITENTITEL = document.title;
-  const alarm = { befund: null, konto: null, gezeigt: null, timer: null };
+  const alarm = { befund: null, konto: null, gezeigt: null, timer: null, live: null, quelle: null, laeuft: false, fehler: null };
 
   const zeitpunkt = (iso, zone) => {
     if (!iso) return '–';
@@ -1056,6 +1057,28 @@
     const teile = new Intl.DateTimeFormat('de-DE', { timeZone: zone || 'Europe/Berlin', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(iso));
     return Number((teile.find((t) => t.type === 'hour') || {}).value);
   };
+
+  // Live bei Meta nachfragen. null, wenn die Funktion fehlt oder gerade nicht antwortet.
+  async function ladeKontoLive(erzwingen) {
+    if (alarm.live === false) return null;
+    try {
+      const { data, error } = await db.functions.invoke('konto-live', { body: { erzwingen: Boolean(erzwingen) } });
+      if (error) {
+        const status = error.context && error.context.status;
+        if (status === 404) { alarm.live = false; return null; } // noch nicht eingespielt
+        let meldung = error.message;
+        try { const j = await error.context.json(); if (j && j.fehler) meldung = j.fehler; } catch (e) { /* egal */ }
+        alarm.fehler = meldung;
+        return null;
+      }
+      alarm.live = true;
+      alarm.fehler = null;
+      return data && data.status && data.status.geprueft_am ? data.status : null;
+    } catch (e) {
+      alarm.fehler = e.message || String(e);
+      return null;
+    }
+  }
 
   async function ladeKontoStatus() {
     try {
@@ -1174,6 +1197,7 @@
     if (!b || !k) return;
     const fenster = $('#alarm');
     const istAlarm = b.stufe === 'alarm';
+    const warOffen = fenster.open;
     const alt = Date.now() - new Date(k.geprueft_am).getTime() > 3 * 3600 * 1000;
     fenster.className = 'alarm-fenster ' + b.stufe;
     fenster.replaceChildren(
@@ -1199,18 +1223,21 @@
         h('p', { class: 'alarm-zwischen' }, 'So behebst du es'),
         h('ol', { class: 'alarm-schritte' }, b.schritte.map((t) => h('li', null, t))),
         b.nachher ? h('p', null, b.nachher) : null,
-        h('p', { class: 'meta' }, `Stand: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Das Werbekonto wird stündlich von 6 bis 23 Uhr geprüft.`),
+        h('p', { class: 'meta' }, alarm.quelle === 'live'
+          ? `Live geprüft: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Die Seite prüft jede Minute neu.`
+          : `Stand: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Das Werbekonto wird stündlich von 6 bis 23 Uhr geprüft.`),
         alt ? h('p', { class: 'meta' }, 'Die letzte Prüfung ist schon länger her. Vielleicht ist das Problem inzwischen behoben.') : null,
         istAlarm && !push.an && pushMoeglich() ? h('p', { class: 'push-tipp' }, 'Diesen Alarm auch bekommen, wenn die Seite zu ist? ',
           h('button', { class: 'textknopf', type: 'button', onclick: () => { fenster.close(); zeichnePushFenster(); } }, 'Benachrichtigungen einschalten')) : null),
       h('div', { class: 'alarm-knoepfe' },
         h('a', { class: 'knopf ' + (istAlarm ? 'knopf-rot' : 'knopf-warn'), href: adsManagerLink(k), target: '_blank', rel: 'noopener noreferrer' }, 'Werbeanzeigenmanager öffnen ↗'),
-        h('button', { class: 'knopf knopf-rand', type: 'button', onclick: () => fenster.close() }, 'Verstanden')));
+        h('button', { class: 'knopf knopf-rand', type: 'button', onclick: () => fenster.close() }, 'Verstanden'),
+        h('button', { class: 'knopf knopf-rand jetzt-pruefen', type: 'button', onclick: () => jetztPruefen() }, 'Jetzt prüfen')));
     versteckeTip();
     if ($('#detail').open) $('#detail').close();
     if (!fenster.open) fenster.showModal();
     fenster.scrollTop = 0;
-    if (istAlarm) starteAlarmton(); else stoppeAlarmton();
+    if (istAlarm && !warOffen) starteAlarmton(); else if (!istAlarm) stoppeAlarmton();
   }
 
   function zeichneAlarmLeiste() {
@@ -1224,15 +1251,58 @@
     leiste.replaceChildren(h('div', { class: 'alarm-leiste-innen' },
       h('span', { class: 'puls', 'aria-hidden': 'true' }),
       h('span', null, b.stufe === 'alarm' ? h('b', null, `Alarm: ${b.titel || 'Deine Kampagnen sind offline'}. `) : h('b', null, 'Achtung: '), b.stufe === 'alarm' ? b.grund : b.kurz),
-      h('button', { type: 'button', onclick: zeigeAlarmFenster }, b.stufe === 'alarm' ? 'Was jetzt?' : 'Details')));
+      h('span', { class: 'alarm-leiste-knoepfe' },
+        h('button', { type: 'button', class: 'leise jetzt-pruefen', onclick: () => jetztPruefen() }, 'Jetzt prüfen'),
+        h('button', { type: 'button', onclick: zeigeAlarmFenster }, b.stufe === 'alarm' ? 'Was jetzt?' : 'Details'))));
     leiste.hidden = false;
   }
 
-  async function pruefeKonto(beimOeffnen) {
-    const k = await ladeKontoStatus();
-    if (!k) { alarm.konto = null; zeichneAlarmLeiste(); return; }
+  // Zeile im Kopf: wie steht das Werbekonto, wann zuletzt geprüft
+  function zeigeKontoStand() {
+    const zeile = $('#konto-stand');
+    const k = alarm.konto;
+    if (!k && !alarm.laeuft) { zeile.hidden = true; return; }
+    const b = alarm.befund;
+    const art = !k ? 'pruefen' : !b ? 'gut' : b.stufe;
+    const wort = { gut: 'Werbekonto läuft', warnung: 'Werbekonto: Warnung', alarm: 'Werbekonto: Kampagnen offline', pruefen: 'Werbekonto' }[art];
+    const uhr = k ? zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '') : '';
+    const wann = alarm.laeuft ? 'wird geprüft …'
+      : alarm.quelle === 'live' ? `live geprüft ${uhr}`
+        : alarm.fehler ? `Live-Prüfung gerade nicht möglich, Stand ${uhr}`
+          : `geprüft ${uhr}`;
+    zeile.className = 'konto-stand ' + art;
+    zeile.replaceChildren(
+      h('span', { class: 'punkt', 'aria-hidden': 'true' }),
+      h('span', null, `${wort} · ${wann}`),
+      h('button', { type: 'button', class: 'jetzt-pruefen', onclick: () => jetztPruefen(), disabled: alarm.laeuft }, 'Jetzt prüfen'));
+    zeile.title = alarm.fehler && alarm.quelle !== 'live' ? `Live-Prüfung: ${alarm.fehler}` : '';
+    zeile.hidden = false;
+  }
+
+  async function jetztPruefen() {
+    if (alarm.laeuft) return;
+    await pruefeKonto(false, true);
+    const fenster = $('#alarm');
+    if (fenster.open && !alarm.befund) fenster.close(); // Problem behoben
+    else if (fenster.open && alarm.befund) zeigeAlarmFenster();
+  }
+
+  async function pruefeKonto(beimOeffnen, erzwingen) {
+    if (alarm.laeuft) return;
+    alarm.laeuft = true;
+    zeigeKontoStand();
+    let k = null;
+    try {
+      k = await ladeKontoLive(erzwingen);
+      alarm.quelle = k ? 'live' : null;
+      if (!k) { k = await ladeKontoStatus(); alarm.quelle = k ? 'datei' : null; }
+    } finally {
+      alarm.laeuft = false;
+    }
+    if (!k) { alarm.konto = null; zeichneAlarmLeiste(); zeigeKontoStand(); return; }
     alarm.konto = k;
     zeichneAlarmLeiste();
+    zeigeKontoStand();
     const b = alarm.befund;
     // Pop-up bei jedem Öffnen der Seite, solange ein Alarm besteht,
     // und zwischendurch, sobald ein neuer Alarm dazukommt
@@ -1250,9 +1320,16 @@
     alarm.timer = null;
     alarm.konto = null;
     alarm.gezeigt = null;
+    alarm.quelle = null;
     zeichneAlarmLeiste();
+    zeigeKontoStand();
     if ($('#alarm').open) $('#alarm').close();
   }
+  // Zurück im Tab: sofort neu prüfen, wenn der letzte Stand älter als eine halbe Minute ist
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !alarm.timer) return;
+    if (!alarm.konto || Date.now() - new Date(alarm.konto.geprueft_am).getTime() > 30 * 1000) pruefeKonto(false);
+  });
   $('#alarm').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
   $('#alarm').addEventListener('close', () => stoppeAlarmton());
 
