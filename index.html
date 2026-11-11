@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Kampagnenanalyse</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <section id="login" class="login" hidden>
+      <h1 class="titel">Kampagnenanalyse</h1>
+      <form id="login-form" class="login-form">
+        <label>E-Mail
+          <input type="email" id="email" autocomplete="username" required>
+        </label>
+        <label>Passwort
+          <input type="password" id="passwort" autocomplete="current-password" required>
+        </label>
+        <button type="submit" class="knopf">Anmelden</button>
+        <p id="login-fehler" class="fehler" hidden></p>
+      </form>
+    </section>
+
+    <section id="dashboard" hidden>
+      <header class="kopf">
+        <div>
+          <h1 class="titel">Kampagnenanalyse</h1>
+          <p id="zeitraum" class="leise">Daten werden geladen …</p>
+        </div>
+        <div class="kopf-rechts">
+          <label class="feld">Zeitraum
+            <select id="tage">
+              <option value="7">Letzte 7 Tage</option>
+              <option value="30" selected>Letzte 30 Tage</option>
+              <option value="90">Letzte 90 Tage</option>
+            </select>
+          </label>
+          <button id="abmelden" class="knopf knopf-leise" type="button">Abmelden</button>
+        </div>
+      </header>
+      <p id="lade-fehler" class="fehler" hidden></p>
+      <div id="inhalt"></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
