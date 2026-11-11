@@ -1167,10 +1167,13 @@
     fenster.className = 'alarm-fenster ' + b.stufe;
     fenster.replaceChildren(
       h('div', { class: 'alarm-kopf' },
-        h('span', { class: 'alarm-symbol', 'aria-hidden': 'true' }, '!'),
-        h('div', null,
+        istAlarm
+          ? h('span', { class: 'rotlicht', 'aria-hidden': 'true' }, h('span', { class: 'kuppel' }), h('span', { class: 'sockel' }))
+          : h('span', { class: 'alarm-symbol', 'aria-hidden': 'true' }, '!'),
+        h('div', { class: 'alarm-kopf-text' },
           h('p', { class: 'alarm-eyebrow' }, istAlarm ? 'Alarm' : 'Warnung'),
-          h('h2', { id: 'alarm-titel', tabindex: '-1', autofocus: true }, b.titel || (istAlarm ? 'Deine Kampagnen sind offline' : 'Bald laufen die Kampagnen nicht mehr')))),
+          h('h2', { id: 'alarm-titel', tabindex: '-1', autofocus: true }, b.titel || (istAlarm ? 'Deine Kampagnen sind offline' : 'Bald laufen die Kampagnen nicht mehr'))),
+        istAlarm ? h('button', { class: 'ton-knopf', type: 'button', onclick: tonKnopfGeklickt }) : null),
       h('div', { class: 'alarm-inhalt' },
         h('p', { class: 'alarm-grund' }, b.grund),
         h('p', null, b.text),
@@ -1191,6 +1194,7 @@
     if ($('#detail').open) $('#detail').close();
     if (!fenster.open) fenster.showModal();
     fenster.scrollTop = 0;
+    if (istAlarm) starteAlarmton(); else stoppeAlarmton();
   }
 
   function zeichneAlarmLeiste() {
@@ -1198,6 +1202,7 @@
     const b = alarm.konto ? bewerteKonto(alarm.konto) : null;
     alarm.befund = b;
     document.title = b && b.stufe === 'alarm' ? `⚠ Kampagnen offline | ${SEITENTITEL}` : SEITENTITEL;
+    titelBlinken(Boolean(b && b.stufe === 'alarm'));
     if (!b) { leiste.hidden = true; leiste.replaceChildren(); return; }
     leiste.className = 'alarm-leiste ' + b.stufe;
     leiste.replaceChildren(h('div', { class: 'alarm-leiste-innen' },
@@ -1233,6 +1238,131 @@
     if ($('#alarm').open) $('#alarm').close();
   }
   $('#alarm').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+  $('#alarm').addEventListener('close', () => stoppeAlarmton());
+
+  // ── Alarmton ──────────────────────────────────────────────────────────────
+  // Eine kurze Sirene aus zwei Tönen, direkt im Browser erzeugt (keine Datei).
+  // Browser spielen Ton erst, wenn man auf der Seite schon einmal geklickt,
+  // getippt oder eine Taste gedrückt hat. Bis dahin wartet der Ton und startet
+  // beim ersten Klick, oder über den Knopf „Alarmton abspielen“.
+  const TON_RUNDEN = 4;          // so oft hintereinander, dann ist Ruhe
+  const TON_ABSTAND_MS = 3500;
+  const ton = { ctx: null, ausgang: null, timer: null, runden: 0, an: speicher.lies('alarm-ton') !== 'aus', wartet: false };
+
+  function audioBereit() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!ton.ctx) {
+      // Ohne vorherigen Klick würde der Browser den Ton ohnehin blockieren
+      if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return null;
+      try { ton.ctx = new AC(); } catch (e) { return null; }
+    }
+    return ton.ctx;
+  }
+
+  function sirene(ctx) {
+    const ausgang = ctx.createGain();
+    ausgang.gain.value = 0.16;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2600;
+    filter.connect(ausgang);
+    ausgang.connect(ctx.destination);
+    const start = ctx.currentTime + 0.03;
+    for (let i = 0; i < 6; i++) {
+      const osc = ctx.createOscillator();
+      const huelle = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = i % 2 ? 690 : 960;
+      const an = start + i * 0.32;
+      const aus = an + 0.28;
+      huelle.gain.setValueAtTime(0.0001, an);
+      huelle.gain.exponentialRampToValueAtTime(1, an + 0.02);
+      huelle.gain.setValueAtTime(1, aus - 0.05);
+      huelle.gain.exponentialRampToValueAtTime(0.0001, aus);
+      osc.connect(huelle);
+      huelle.connect(filter);
+      osc.start(an);
+      osc.stop(aus + 0.02);
+    }
+    return ausgang;
+  }
+
+  function tonRunde() {
+    ton.timer = null;
+    if (!ton.an || !ton.ctx || !$('#alarm').open) return;
+    ton.ausgang = sirene(ton.ctx);
+    ton.runden++;
+    if (ton.runden < TON_RUNDEN) ton.timer = setTimeout(tonRunde, TON_ABSTAND_MS);
+  }
+
+  function starteAlarmton() {
+    stoppeAlarmton();
+    if (!ton.an) { zeigeTonKnopf(); return; }
+    const ctx = audioBereit();
+    const los = () => {
+      if (!ton.an || !$('#alarm').open || ctx.state !== 'running') return;
+      ton.wartet = false;
+      ton.runden = 0;
+      tonRunde();
+      zeigeTonKnopf();
+    };
+    ton.wartet = true;
+    zeigeTonKnopf();
+    if (!ctx) return;
+    if (ctx.state === 'running') los();
+    else ctx.resume().then(los).catch(() => {});
+  }
+
+  function stoppeAlarmton() {
+    if (ton.timer) clearTimeout(ton.timer);
+    ton.timer = null;
+    if (ton.ausgang) { try { ton.ausgang.disconnect(); } catch (e) { /* schon getrennt */ } }
+    ton.ausgang = null;
+  }
+
+  function zeigeTonKnopf() {
+    const knopf = document.querySelector('#alarm .ton-knopf');
+    if (!knopf) return;
+    knopf.textContent = !ton.an ? 'Ton an' : ton.wartet ? 'Alarmton abspielen' : 'Ton aus';
+    knopf.setAttribute('aria-label', !ton.an ? 'Alarmton einschalten' : ton.wartet ? 'Alarmton abspielen' : 'Alarmton ausschalten');
+  }
+
+  function tonKnopfGeklickt() {
+    if (ton.an && !ton.wartet) {
+      ton.an = false;
+      speicher.schreib('alarm-ton', 'aus');
+      stoppeAlarmton();
+      zeigeTonKnopf();
+    } else {
+      ton.an = true;
+      speicher.weg('alarm-ton');
+      starteAlarmton();
+    }
+  }
+
+  // Erster Klick, Tipp oder Tastendruck irgendwo: wartenden Ton starten
+  // (nicht beim Schließen des Pop-ups oder beim Sprung zu Meta)
+  const entsperreTon = (e) => {
+    if (!ton.wartet || !ton.an || !$('#alarm').open) return;
+    if (e.target && e.target.closest && e.target.closest('.alarm-knoepfe, .ton-knopf')) return;
+    if (e.type === 'keydown' && e.key === 'Escape') return;
+    starteAlarmton();
+  };
+  ['pointerdown', 'touchend', 'click', 'keydown'].forEach((art) => document.addEventListener(art, entsperreTon, true));
+
+  // Tab-Titel blinkt, solange ein Alarm besteht und die Seite im Hintergrund ist
+  let titelTimer = null;
+  function titelBlinken(an) {
+    if (titelTimer) clearInterval(titelTimer);
+    titelTimer = null;
+    if (!an) return;
+    let wechsel = false;
+    titelTimer = setInterval(() => {
+      wechsel = document.hidden ? !wechsel : false;
+      document.title = wechsel ? '🔴 ALARM: Kampagnen offline' : `⚠ Kampagnen offline | ${SEITENTITEL}`;
+    }, 1000);
+  }
 
   // ── Anmeldung ─────────────────────────────────────────────────────────────
   function zeige(angemeldet) {

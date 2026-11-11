@@ -342,8 +342,9 @@ td.kname { white-space: normal; min-width: 220px; }
 .alarm-leiste { background: var(--schlecht); color: var(--weiss); }
 .alarm-leiste.warnung { background: var(--warnung-hell); color: #5c3700; border-bottom: 1px solid #efd59a; }
 .alarm-leiste-innen { max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 15px; }
-.alarm-leiste .puls { flex: none; width: 12px; height: 12px; background: var(--weiss); animation: alarm-puls 1.4s ease-out infinite; }
-.alarm-leiste.warnung .puls { background: var(--warnung); animation-name: warn-puls; }
+.alarm-leiste .puls { flex: none; width: 14px; height: 14px; border-radius: 50%; background: #ffe3df; box-shadow: 0 0 10px 3px rgba(255, 255, 255, .85); animation: lampe-blinkt 1.2s ease-in-out infinite; }
+.alarm-leiste.warnung .puls { border-radius: 0; width: 12px; height: 12px; background: var(--warnung); box-shadow: none; animation: warn-puls 1.4s ease-out infinite; }
+@keyframes lampe-blinkt { 0%, 100% { opacity: 1; } 50% { opacity: .2; box-shadow: none; } }
 .alarm-leiste button { margin-left: auto; padding: 8px 16px; background: var(--weiss); color: var(--schlecht); border: 0; font-weight: 700; cursor: pointer; }
 .alarm-leiste.warnung button { background: var(--warnung); color: var(--weiss); }
 .alarm-leiste button:focus-visible { outline: 3px solid var(--navy); outline-offset: 2px; }
@@ -354,6 +355,21 @@ td.kname { white-space: normal; min-width: 220px; }
 @keyframes alarm-auf { 0% { opacity: 0; transform: scale(.94); } 60% { transform: scale(1.015); } 100% { opacity: 1; transform: none; } }
 .alarm-fenster::backdrop { background: rgba(70, 8, 4, .62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .alarm-fenster.warnung::backdrop { background: rgba(0, 36, 74, .55); }
+/* Rotes Blinklicht: der ganze Hintergrund pulsiert weich, unter einmal pro Sekunde */
+.alarm-fenster.alarm::backdrop { animation: rot-pulsiert 1.2s ease-in-out infinite; }
+@keyframes rot-pulsiert { 0%, 100% { background-color: rgba(150, 8, 0, .74); } 50% { background-color: rgba(40, 4, 2, .74); } }
+.alarm-fenster.alarm .alarm-kopf { background: linear-gradient(120deg, #3a0906 0%, #7d1209 100%); }
+.alarm-kopf-text { flex: 1; min-width: 0; }
+.rotlicht { position: relative; flex: none; width: 60px; height: 60px; }
+.rotlicht .kuppel { position: absolute; left: 8px; right: 8px; top: 6px; bottom: 13px; border-radius: 22px 22px 5px 5px; background: radial-gradient(circle at 50% 32%, #ffe0dc 0%, #ff4a3d 32%, #d41204 68%, #7d0800 100%); box-shadow: 0 0 16px 6px rgba(255, 50, 35, .9), 0 0 48px 18px rgba(255, 50, 35, .5); animation: rotlicht 1.2s ease-in-out infinite; }
+.rotlicht .sockel { position: absolute; left: 3px; right: 3px; bottom: 3px; height: 11px; border-radius: 2px; background: linear-gradient(#4a4a4a, #1c1c1c); }
+@keyframes rotlicht {
+  0%, 100% { filter: brightness(1.15) saturate(1.1); box-shadow: 0 0 16px 6px rgba(255, 50, 35, .9), 0 0 48px 18px rgba(255, 50, 35, .5); }
+  50% { filter: brightness(.45); box-shadow: 0 0 4px 1px rgba(255, 50, 35, .25), 0 0 0 0 rgba(255, 50, 35, 0); }
+}
+.ton-knopf { flex: none; align-self: flex-start; padding: 6px 12px; background: transparent; color: var(--weiss); border: 1.5px solid rgba(255, 255, 255, .6); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.ton-knopf:hover { background: var(--weiss); color: #7d1209; }
+.ton-knopf:focus-visible { outline: 3px solid var(--beige); outline-offset: 2px; }
 .alarm-kopf { display: flex; align-items: center; gap: 18px; padding: 22px 26px; background: var(--schlecht); color: var(--weiss); }
 .alarm-fenster.warnung .alarm-kopf { background: var(--warnung); }
 .alarm-symbol { flex: none; display: grid; place-items: center; width: 54px; height: 54px; background: var(--weiss); color: var(--schlecht); font-size: 32px; font-weight: 700; line-height: 1; animation: alarm-puls 1.4s ease-out infinite; }
@@ -479,7 +495,9 @@ details.detail-mehr summary { cursor: pointer; font-weight: 700; color: var(--na
   .begriffe dd { margin-bottom: 10px; }
   .saeulen-flaeche { min-height: 180px; }
   .alarm-leiste-innen { padding: 12px 16px; }
-  .alarm-kopf { padding: 18px; gap: 14px; }
+  .alarm-kopf { padding: 18px; gap: 14px; flex-wrap: wrap; }
+  .alarm-kopf-text { flex: 1 1 calc(100% - 74px); }
+  .ton-knopf { order: 3; margin-left: 74px; }
   .alarm-kopf h2 { font-size: 19px; }
   .alarm-inhalt { padding: 18px 18px 4px; }
   .alarm-knoepfe { padding: 8px 18px 20px; }
