@@ -1077,32 +1077,13 @@
     const ZAHLUNG = ['Öffne den Meta Werbeanzeigenmanager.', 'Geh links im Menü zu „Abrechnung und Zahlungen“.'];
     const betrag = (v) => (Math.abs(v) < 1000 ? euro2(v) : euro(v));
     const rest = limit > 0 ? limit - ausgegeben : null;
-    // Bei sehr kleinem Rest spielt Meta schon so gut wie nichts mehr aus
+    // Sehr kleiner Rest zählt wie erreicht
     const knapp = limit > 0 && rest <= Math.max(25, limit * 0.02);
     const zahlungOffen = status === 8 || status === 9;
     const zahlungHinweis = status === 9
       ? 'Außerdem ist eine Zahlung offen: Meta konnte eine Zahlung nicht einziehen und hat eine Kulanzfrist gestartet. Läuft sie ab, stoppt Meta alle Anzeigen.'
       : 'Außerdem wickelt Meta gerade eine Zahlung ab. Klappt sie nicht, stoppt Meta die Anzeigen.';
-    const heuteSatz = k.impressionen_heute != null && k.geprueft_am
-      ? ` Heute gab es bis ${zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '')} erst ${z0(Number(k.impressionen_heute))} Einblendungen.`
-      : '';
 
-    if (limit > 0 && (ausgegeben >= limit || knapp)) {
-      const erreicht = ausgegeben >= limit;
-      return {
-        stufe: 'alarm', schluessel: 'limit',
-        titel: erreicht ? 'Deine Kampagnen sind offline' : 'Deine Kampagnen laufen so gut wie nicht mehr',
-        grund: erreicht ? 'Das Ausgabenlimit des Werbekontos ist erreicht.' : `Das Ausgabenlimit ist so gut wie erreicht, es bleiben nur noch ${betrag(Math.max(0, rest))}.`,
-        text: erreicht
-          ? `Im Werbekonto ist ein Ausgabenlimit von ${betrag(limit)} eingestellt, und davon sind ${betrag(ausgegeben)} ausgegeben. Meta spielt deshalb keine Anzeigen mehr aus. Solange das so bleibt, kommen keine neuen Leads rein.${heuteSatz}`
-          : `Im Werbekonto ist ein Ausgabenlimit von ${betrag(limit)} eingestellt, und davon sind ${betrag(ausgegeben)} ausgegeben. Mit dem kleinen Rest spielt Meta die Anzeigen kaum noch aus und stoppt sie ganz, sobald er verbraucht ist.${heuteSatz}`,
-        zusatz: zahlungOffen ? zahlungHinweis : null,
-        balken: { ausgegeben, limit },
-        schritte: [...ZAHLUNG, 'Öffne die „Zahlungseinstellungen“ und erhöhe beim „Ausgabenlimit für das Konto“ den Betrag, setz es zurück oder entferne es.',
-          ...(zahlungOffen ? ['Begleiche dort auch den offenen Betrag oder hinterleg eine funktionierende Zahlungsmethode.'] : [])],
-        nachher: 'Danach laufen die Anzeigen meist innerhalb weniger Minuten wieder an.',
-      };
-    }
     if (![1, 8, 9].includes(status)) { // 1 aktiv; 8 und 9 laufen noch, siehe Warnung unten
       const TEXT = {
         2: ['Meta hat das Werbekonto deaktiviert.', 'Solange das Konto deaktiviert ist, spielt Meta keine Anzeigen aus.', ['Öffne den Meta Werbeanzeigenmanager und lies die Meldung von Meta oben auf der Seite.', 'Prüf unter „Kontoqualität“, warum das Konto deaktiviert wurde, und leg dort bei Bedarf Einspruch ein.']],
@@ -1113,15 +1094,45 @@
       }[status] || [`Das Werbekonto ist nicht aktiv (Meta-Status ${status}).`, 'Meta spielt im Moment keine Anzeigen aus.', ['Öffne den Meta Werbeanzeigenmanager und lies die Meldung von Meta oben auf der Seite.']];
       return { stufe: 'alarm', schluessel: `konto-${status}`, grund: TEXT[0], text: TEXT[1], schritte: TEXT[2], nachher: 'Sobald Meta das Konto wieder freigibt, laufen die Anzeigen weiter.' };
     }
-    if (aktive > 0 && Number(k.impressionen_heute) === 0 && stundeIn(k.geprueft_am, k.zeitzone) >= 10) {
-      const zp = zeitpunkt(k.geprueft_am, k.zeitzone);
+    // Roter Alarm nur, wenn wirklich nicht ausgeliefert wird. Das erkennt die
+    // stündliche Prüfung: keine neuen Einblendungen seit der Prüfung davor.
+    const steht = k.auslieferung_steht != null
+      ? Boolean(k.auslieferung_steht)
+      : aktive > 0 && Number(k.impressionen_heute) === 0 && stundeIn(k.geprueft_am, k.zeitzone) >= 10;
+    const limitGrund = limit > 0 && (ausgegeben >= limit || knapp);
+    const LIMIT_SCHRITT = 'Öffne die „Zahlungseinstellungen“ und erhöhe beim „Ausgabenlimit für das Konto“ den Betrag, setz es zurück oder entferne es.';
+    const ZAHLUNG_SCHRITT = 'Begleiche dort den offenen Betrag oder hinterleg eine funktionierende Zahlungsmethode.';
+    if (steht) {
+      const seit = k.basis && k.basis.geprueft_am
+        ? `Seit ${zeitpunkt(k.basis.geprueft_am, k.zeitzone).replace(/^heute /, '')} wurde keine einzige Anzeige mehr ausgespielt.`
+        : 'Heute wurde noch keine einzige Anzeige ausgespielt.';
+      const wahrscheinlich = limitGrund
+        ? ` Wahrscheinlicher Grund: Das Ausgabenlimit ist ${ausgegeben >= limit ? 'erreicht' : 'fast erreicht'} (${betrag(ausgegeben)} von ${betrag(limit)}).`
+        : zahlungOffen ? ' Wahrscheinlicher Grund: Eine Zahlung ist offen.' : ' Den Grund zeigt der Werbeanzeigenmanager in der Spalte „Auslieferung“.';
       return {
-        stufe: 'alarm', schluessel: 'offline', grund: 'Heute wurde noch keine einzige Anzeige ausgespielt.',
-        text: zp.startsWith('heute ')
-          ? `Im Konto sind ${z0(aktive)} Anzeigen aktiv, aber bis ${zp.slice(6)} hat Meta heute keine davon ausgespielt. Die Kampagnen sind also offline.`
-          : `Im Konto sind ${z0(aktive)} Anzeigen aktiv, aber bei der letzten Prüfung (${zp}) hatte Meta an diesem Tag keine davon ausgespielt. Die Kampagnen waren also offline.`,
-        schritte: ['Öffne den Meta Werbeanzeigenmanager und schau in der Spalte „Auslieferung“, was dort steht.', 'Prüf unter „Abrechnung und Zahlungen“, ob eine Zahlung fehlgeschlagen oder ein Limit erreicht ist.', 'Prüf, ob Anzeigen abgelehnt wurden.'],
+        stufe: 'alarm', schluessel: 'offline', titel: 'Deine Kampagnen sind offline', grund: seit,
+        text: `Im Konto sind ${aktive ? `${z0(aktive)} Anzeigen` : 'Anzeigen'} aktiv, aber Meta liefert sie nicht aus. Solange das so bleibt, kommen keine neuen Leads rein.${wahrscheinlich}`,
+        zusatz: limitGrund && zahlungOffen ? zahlungHinweis : null,
+        balken: limitGrund ? { ausgegeben, limit } : null,
+        schritte: limitGrund ? [...ZAHLUNG, LIMIT_SCHRITT, ...(zahlungOffen ? [ZAHLUNG_SCHRITT] : [])]
+          : zahlungOffen ? [...ZAHLUNG, ZAHLUNG_SCHRITT]
+            : ['Öffne den Meta Werbeanzeigenmanager und schau in der Spalte „Auslieferung“, was dort steht.', 'Prüf unter „Abrechnung und Zahlungen“, ob eine Zahlung fehlgeschlagen oder ein Limit erreicht ist.', 'Prüf, ob Anzeigen abgelehnt wurden.'],
         nachher: 'Sobald wieder ausgespielt wird, verschwindet diese Meldung nach der nächsten Prüfung.',
+      };
+    }
+    // Limit laut Meta erreicht oder fast erreicht, die Anzeigen laufen aber noch
+    if (limitGrund) {
+      const erreicht = ausgegeben >= limit;
+      return {
+        stufe: 'warnung', schluessel: 'limit-pruefen', titel: 'Bitte das Ausgabenlimit prüfen',
+        grund: erreicht ? 'Laut Meta ist das Ausgabenlimit überschritten.' : 'Das Ausgabenlimit ist fast erreicht.',
+        kurz: erreicht
+          ? `Laut Meta ist das Ausgabenlimit überschritten (${betrag(ausgegeben)} von ${betrag(limit)}), die Anzeigen laufen aber noch. Bitte prüfen.`
+          : `Das Ausgabenlimit ist fast erreicht: nur noch ${betrag(rest)} übrig. Die Anzeigen laufen noch.`,
+        text: `Im Werbekonto ist ein Ausgabenlimit von ${betrag(limit)} eingestellt, ausgegeben sind ${betrag(ausgegeben)}. Die Anzeigen werden im Moment trotzdem ausgeliefert, Meta kann sie aber jederzeit stoppen. Prüf das Limit deshalb lieber jetzt.`,
+        zusatz: zahlungOffen ? zahlungHinweis : null,
+        balken: { ausgegeben, limit },
+        schritte: [...ZAHLUNG, LIMIT_SCHRITT, ...(zahlungOffen ? [ZAHLUNG_SCHRITT] : [])],
       };
     }
     if (status === 8 || status === 9) {
@@ -1189,7 +1200,9 @@
         h('ol', { class: 'alarm-schritte' }, b.schritte.map((t) => h('li', null, t))),
         b.nachher ? h('p', null, b.nachher) : null,
         h('p', { class: 'meta' }, `Stand: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Das Werbekonto wird stündlich von 6 bis 23 Uhr geprüft.`),
-        alt ? h('p', { class: 'meta' }, 'Die letzte Prüfung ist schon länger her. Vielleicht ist das Problem inzwischen behoben.') : null),
+        alt ? h('p', { class: 'meta' }, 'Die letzte Prüfung ist schon länger her. Vielleicht ist das Problem inzwischen behoben.') : null,
+        istAlarm && !push.an && pushMoeglich() ? h('p', { class: 'push-tipp' }, 'Diesen Alarm auch bekommen, wenn die Seite zu ist? ',
+          h('button', { class: 'textknopf', type: 'button', onclick: () => { fenster.close(); zeichnePushFenster(); } }, 'Benachrichtigungen einschalten')) : null),
       h('div', { class: 'alarm-knoepfe' },
         h('a', { class: 'knopf ' + (istAlarm ? 'knopf-rot' : 'knopf-warn'), href: adsManagerLink(k), target: '_blank', rel: 'noopener noreferrer' }, 'Werbeanzeigenmanager öffnen ↗'),
         h('button', { class: 'knopf knopf-rand', type: 'button', onclick: () => fenster.close() }, 'Verstanden')));
@@ -1366,11 +1379,170 @@
     }, 1000);
   }
 
+  // ── Benachrichtigungen auf dem Gerät (Web Push) ──────────────────────────
+  // Die stündliche Konto-Prüfung (Repo Meta-Analyse-Tool) schickt bei Alarm eine
+  // Mitteilung an alle Geräte, die hier eingeschaltet wurden, auch wenn die
+  // Seite zu ist. Das Gerät wird in den Profildaten des Logins gespeichert
+  // (user_metadata.push_abos), der Hintergrunddienst sw.js zeigt die Mitteilung.
+  const push = { registrierung: null, schluessel: null, an: false };
+  const pushMoeglich = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+  const b64zuBytes = (text) => {
+    const roh = atob((text + '='.repeat((4 - (text.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(roh, (c) => c.charCodeAt(0));
+  };
+  function geraetName() {
+    const ua = navigator.userAgent;
+    const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+    const system = /iPhone|iPad/.test(ua) ? 'iPhone/iPad' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : 'Linux';
+    return `${browser} auf ${system}`;
+  }
+
+  async function dienstRegistrieren() {
+    if (push.registrierung) return push.registrierung;
+    try { push.registrierung = await navigator.serviceWorker.register('sw.js'); } catch (e) { push.registrierung = null; }
+    return push.registrierung;
+  }
+  async function ladePushSchluessel() {
+    if (push.schluessel) return push.schluessel;
+    try {
+      const { data, error } = await db.storage.from('motive').download('_konto/push-schluessel.json');
+      if (!error && data) push.schluessel = JSON.parse(await data.text()).publicKey || null;
+    } catch (e) { /* noch nicht eingerichtet */ }
+    return push.schluessel;
+  }
+  async function gespeicherteGeraete() {
+    const { data } = await db.auth.getUser();
+    const m = data && data.user && data.user.user_metadata;
+    return (m && Array.isArray(m.push_abos) ? m.push_abos : []).filter((a) => a && a.endpoint);
+  }
+  async function geraeteSpeichern(liste) {
+    const { error } = await db.auth.updateUser({ data: { push_abos: liste } });
+    if (error) throw error;
+  }
+
+  // 'nicht-moeglich' | 'blockiert' | 'an' | 'aus'
+  async function pushStatus() {
+    if (!pushMoeglich()) return { stand: 'nicht-moeglich' };
+    if (Notification.permission === 'denied') return { stand: 'blockiert' };
+    const reg = await dienstRegistrieren();
+    const abo = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
+    if (abo && Notification.permission === 'granted') {
+      const geraete = await gespeicherteGeraete().catch(() => []);
+      if (geraete.some((g) => g.endpoint === abo.endpoint)) return { stand: 'an', abo };
+    }
+    return { stand: 'aus', abo };
+  }
+
+  async function pushEinschalten() {
+    // Erlaubnis zuerst und direkt im Klick erfragen, sonst blockiert Safari
+    const erlaubnis = await Notification.requestPermission();
+    if (erlaubnis !== 'granted') return;
+    const [reg, schluessel] = await Promise.all([dienstRegistrieren(), ladePushSchluessel()]);
+    if (!schluessel) throw new Error('Die Benachrichtigungen werden gerade noch eingerichtet. Versuch es in ein paar Minuten noch einmal.');
+    if (!reg) throw new Error('Dein Browser lässt den Hintergrunddienst für Benachrichtigungen nicht zu.');
+    await navigator.serviceWorker.ready;
+    const optionen = { userVisibleOnly: true, applicationServerKey: b64zuBytes(schluessel) };
+    let abo = await reg.pushManager.getSubscription();
+    try {
+      if (!abo) abo = await reg.pushManager.subscribe(optionen);
+    } catch (e) {
+      if (!abo) throw e;
+    }
+    // Alter Schlüssel? Dann neu anmelden
+    const alterSchluessel = abo.options && abo.options.applicationServerKey;
+    if (alterSchluessel && btoa(String.fromCharCode(...new Uint8Array(alterSchluessel))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') !== schluessel.replace(/=+$/, '')) {
+      await abo.unsubscribe();
+      abo = await reg.pushManager.subscribe(optionen);
+    }
+    const j = abo.toJSON();
+    const andere = (await gespeicherteGeraete()).filter((g) => g.endpoint !== j.endpoint);
+    await geraeteSpeichern([...andere, { endpoint: j.endpoint, keys: j.keys, geraet: geraetName(), seit: new Date().toISOString() }]);
+  }
+
+  async function pushAusschalten() {
+    const reg = await dienstRegistrieren();
+    const abo = reg ? await reg.pushManager.getSubscription() : null;
+    if (abo) {
+      const endpoint = abo.endpoint;
+      await abo.unsubscribe().catch(() => {});
+      await geraeteSpeichern((await gespeicherteGeraete()).filter((g) => g.endpoint !== endpoint));
+    }
+  }
+
+  async function pushProbe() {
+    const reg = await dienstRegistrieren();
+    if (reg) await reg.showNotification('🔴 Kampagnen offline (Probe)', { body: 'So sieht ein Alarm aus. Ein Klick darauf öffnet die Kampagnenanalyse.', icon: 'icon-192.png', tag: 'kampagnen-probe' });
+  }
+
+  function zeigePushKnopf() {
+    const knopf = $('#benachrichtigungen');
+    knopf.hidden = false;
+    knopf.textContent = push.an ? '🔔 Benachrichtigungen an' : '🔕 Benachrichtigungen';
+  }
+
+  async function zeichnePushFenster(meldung) {
+    const fenster = $('#push');
+    const { stand } = await pushStatus();
+    push.an = stand === 'an';
+    zeigePushKnopf();
+    const knopf = (text, klasse, aktion) => h('button', {
+      class: 'knopf ' + (klasse || ''), type: 'button',
+      onclick: async (e) => {
+        const b = e.currentTarget;
+        b.disabled = true;
+        try { await aktion(); await zeichnePushFenster(); } catch (err) { await zeichnePushFenster({ fehler: err.message || String(err) }); }
+      },
+    }, text);
+    const STAND = {
+      'an': [h('p', { class: 'push-stand an' }, h('b', null, '✓ Auf diesem Gerät eingeschaltet'), ` (${geraetName()})`),
+        h('div', { class: 'push-knoepfe' }, knopf('Probe anzeigen', 'knopf-rand', pushProbe), knopf('Ausschalten', 'knopf-rand', pushAusschalten))],
+      'aus': [h('p', { class: 'push-stand' }, 'Auf diesem Gerät noch nicht eingeschaltet.'),
+        h('div', { class: 'push-knoepfe' }, knopf('🔔 Einschalten', '', pushEinschalten)),
+        h('p', { class: 'meta' }, 'Dein Browser fragt gleich, ob diese Seite Mitteilungen senden darf. Klick dort auf „Erlauben“.')],
+      'blockiert': [h('p', { class: 'push-stand blockiert' }, h('b', null, 'Mitteilungen sind für diese Seite blockiert.')),
+        h('p', null, 'So erlaubst du sie wieder:'),
+        h('ul', { class: 'push-liste' },
+          h('li', null, 'Safari: Menü Safari → Einstellungen → Websites → Mitteilungen, dort bei erikkarsten.github.io „Erlauben“ wählen.'),
+          h('li', null, 'Chrome: links neben der Adresse auf das Symbol klicken → Benachrichtigungen → Zulassen.')),
+        h('p', null, 'Danach die Seite neu laden und hier auf „Einschalten“ klicken.')],
+      'nicht-moeglich': [h('p', { class: 'push-stand blockiert' }, h('b', null, 'Dieser Browser kann keine Benachrichtigungen empfangen.')),
+        h('p', null, 'Nimm am Computer Safari, Chrome, Edge oder Firefox in einer aktuellen Version. Am iPhone geht es leider nicht.')],
+    }[stand];
+    fenster.replaceChildren(
+      h('div', { class: 'detail-kopf' },
+        h('div', null, h('p', { class: 'detail-name', id: 'push-titel' }, 'Alarm als Benachrichtigung'), h('p', { class: 'detail-unter' }, 'Auch wenn die Kampagnenanalyse nicht geöffnet ist')),
+        h('button', { class: 'knopf knopf-hell', type: 'button', onclick: () => fenster.close() }, 'Schließen')),
+      h('div', { class: 'push-inhalt' },
+        h('p', null, 'Wenn deine Kampagnen offline gehen, zeigt dein Computer eine Mitteilung, auch wenn diese Seite gerade nicht offen ist. Ein Klick darauf öffnet die Kampagnenanalyse.'),
+        h('ul', { class: 'push-liste' },
+          h('li', null, 'Sofort, wenn ein Alarm neu auftritt'),
+          h('li', null, 'Alle 3 Stunden eine Erinnerung, solange er besteht'),
+          h('li', null, 'Eine Entwarnung, wenn die Kampagnen wieder laufen')),
+        h('p', { class: 'meta' }, 'Geprüft wird stündlich von 6 bis 23 Uhr.'),
+        meldung && meldung.fehler ? h('p', { class: 'fehler-box' }, meldung.fehler) : null,
+        h('div', { class: 'push-box' }, STAND),
+        h('p', { class: 'push-zwischen' }, 'Gut zu wissen'),
+        h('ul', { class: 'push-liste klein' },
+          h('li', null, 'Am Mac müssen Mitteilungen für deinen Browser erlaubt sein: Systemeinstellungen → Mitteilungen → Safari bzw. Google Chrome. Stell dort den Stil auf „Hinweise“, dann bleibt der Alarm stehen, bis du ihn wegklickst.'),
+          h('li', null, 'Bei Chrome muss das Programm laufen, ein Fenster muss aber nicht offen sein.'),
+          h('li', null, 'Jedes Gerät und jeder Browser wird einzeln eingeschaltet.'))));
+    if (!fenster.open) fenster.showModal();
+  }
+
+  async function richtePushEin() {
+    if (!pushMoeglich()) { push.an = false; zeigePushKnopf(); return; }
+    const { stand } = await pushStatus().catch(() => ({ stand: 'aus' }));
+    push.an = stand === 'an';
+    zeigePushKnopf();
+  }
+  $('#benachrichtigungen').addEventListener('click', () => zeichnePushFenster());
+  $('#push').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
   // ── Anmeldung ─────────────────────────────────────────────────────────────
   function zeige(angemeldet) {
     $('#login').hidden = angemeldet;
     $('#dashboard').hidden = !angemeldet;
-    if (angemeldet) { aktualisiere(); starteKontoPruefung(); } else { stoppeKontoPruefung(); $('#email').focus(); }
+    if (angemeldet) { aktualisiere(); starteKontoPruefung(); richtePushEin(); } else { stoppeKontoPruefung(); $('#benachrichtigungen').hidden = true; if ($('#push').open) $('#push').close(); $('#email').focus(); }
   }
 
   $('#login-form').addEventListener('submit', async (ev) => {

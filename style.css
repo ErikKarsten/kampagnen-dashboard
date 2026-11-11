@@ -400,6 +400,25 @@ td.kname { white-space: normal; min-width: 220px; }
 .knopf-warn { background: var(--warnung); border-color: var(--warnung); }
 .knopf-warn:hover { background: #7a4800; border-color: #7a4800; }
 
+/* Benachrichtigungen */
+.push-fenster { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 0; background: var(--weiss); color: var(--text); box-shadow: 0 30px 90px rgba(0, 20, 50, .35); }
+.push-fenster[open] { animation: auftauchen .3s var(--tempo); }
+.push-fenster::backdrop { background: rgba(0, 36, 74, .6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.push-inhalt { padding: 22px 26px 24px; }
+.push-inhalt > p { margin: 0 0 10px; }
+.push-liste { margin: 0 0 12px; padding-left: 20px; }
+.push-liste li + li { margin-top: 4px; }
+.push-liste.klein { font-size: 14px; color: var(--leise); }
+.push-box { margin: 16px 0 6px; padding: 16px 18px; background: var(--beige-hell); border-left: 4px solid var(--navy); }
+.push-box p { margin: 0 0 10px; }
+.push-box .meta { margin: 10px 0 0; }
+.push-stand.an { color: var(--gut); }
+.push-stand.an b { color: var(--gut); }
+.push-stand.blockiert b { color: var(--schlecht); }
+.push-knoepfe { display: flex; flex-wrap: wrap; gap: 10px; }
+.push-zwischen { margin: 18px 0 6px !important; font-family: var(--serif); font-weight: 700; font-size: 16px; color: var(--navy); }
+.push-tipp { margin-top: 14px !important; padding-top: 12px; border-top: 1px solid var(--linie); font-size: 14px; }
+
 /* Detail-Fenster */
 .detail-fenster { width: min(1120px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 0; background: var(--weiss); color: var(--text); box-shadow: 0 30px 90px rgba(0, 20, 50, .35); }
 .detail-fenster[open] { animation: auftauchen .3s var(--tempo); }
