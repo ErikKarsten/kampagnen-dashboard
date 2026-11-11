@@ -367,6 +367,8 @@ td.kname { white-space: normal; min-width: 220px; }
   0%, 100% { filter: brightness(1.15) saturate(1.1); box-shadow: 0 0 16px 6px rgba(255, 50, 35, .9), 0 0 48px 18px rgba(255, 50, 35, .5); }
   50% { filter: brightness(.45); box-shadow: 0 0 4px 1px rgba(255, 50, 35, .25), 0 0 0 0 rgba(255, 50, 35, 0); }
 }
+.ton-hinweis { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 16px; padding: 12px 14px; background: var(--schlecht-hell); border-left: 4px solid var(--schlecht); font-size: 14px; font-weight: 600; }
+.ton-hinweis .knopf { animation: alarm-puls 1.4s ease-out infinite; }
 .ton-knopf { flex: none; align-self: flex-start; padding: 6px 12px; background: transparent; color: var(--weiss); border: 1.5px solid rgba(255, 255, 255, .6); font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .ton-knopf:hover { background: var(--weiss); color: #7d1209; }
 .ton-knopf:focus-visible { outline: 3px solid var(--beige); outline-offset: 2px; }
