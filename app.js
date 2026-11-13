@@ -1733,6 +1733,9 @@
   }
 
   async function richtePushEin() {
+    // Den Hintergrunddienst immer anmelden: Er holt auch die Startseite frisch,
+    // damit Neuerungen sofort sichtbar sind
+    if ('serviceWorker' in navigator && window.isSecureContext) dienstRegistrieren();
     if (!pushMoeglich()) { push.an = false; zeigePushKnopf(); return; }
     const { stand } = await pushStatus().catch(() => ({ stand: 'aus' }));
     push.an = stand === 'an';
