@@ -1399,7 +1399,9 @@
       const { data, error } = await db.functions.invoke('konto-live', { body: { erzwingen: Boolean(erzwingen) } });
       if (error) {
         const status = error.context && error.context.status;
-        if (status === 404) { alarm.live = false; return null; } // noch nicht eingespielt
+        // Funktion fehlt (404) oder der Aufruf scheitert schon im Browser: Hat die
+        // Live-Prüfung in dieser Sitzung noch nie geklappt, gilt sie als nicht eingerichtet
+        if (status === 404 || (!status && alarm.live !== true)) { alarm.live = false; alarm.fehler = null; return null; }
         let meldung = error.message;
         try { const j = await error.context.json(); if (j && j.fehler) meldung = j.fehler; } catch (e) { /* egal */ }
         alarm.fehler = meldung;
@@ -1603,7 +1605,7 @@
     const wann = alarm.laeuft ? 'wird geprüft …'
       : alarm.quelle === 'live' ? `live geprüft ${uhr}`
         : alarm.fehler ? `Live-Prüfung gerade nicht möglich, Stand ${uhr}`
-          : `geprüft ${uhr}`;
+          : `stündlich geprüft, zuletzt ${uhr}`;
     zeile.className = 'konto-stand ' + art;
     zeile.replaceChildren(
       h('span', { class: 'punkt', 'aria-hidden': 'true' }),
@@ -1619,6 +1621,26 @@
     const fenster = $('#alarm');
     if (fenster.open && !alarm.befund) fenster.close(); // Problem behoben
     else if (fenster.open && alarm.befund) zeigeAlarmFenster();
+    // Rückmeldung, was die Prüfung ergeben hat
+    const k = alarm.konto;
+    const uhr = k ? zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '') : '';
+    const ergebnis = !alarm.befund ? 'Alles in Ordnung, das Werbekonto läuft.' : alarm.befund.stufe === 'alarm' ? 'Die Kampagnen sind offline.' : 'Es gibt eine Warnung, Details in der gelben Leiste.';
+    let text;
+    if (alarm.quelle === 'live') text = `✓ Gerade live bei Meta geprüft. ${ergebnis}`;
+    else if (alarm.live === false) text = `Die Live-Prüfung ist noch nicht eingerichtet. Du siehst den Stand der stündlichen Prüfung${uhr ? ` von ${uhr}` : ''}. Neue Werte kommen mit der nächsten Prüfung (jede Stunde um :17).`;
+    else if (alarm.fehler) text = `Die Live-Prüfung hat gerade nicht geklappt (${alarm.fehler}). Du siehst den Stand${uhr ? ` von ${uhr}` : ''}.`;
+    else text = k ? `Stand der stündlichen Prüfung${uhr ? ` von ${uhr}` : ''}.` : 'Noch keine Prüfung vorhanden.';
+    zeigeKontoMeldung(text, alarm.quelle === 'live' ? 'gut' : 'hinweis');
+  }
+
+  let kontoMeldungTimer = null;
+  function zeigeKontoMeldung(text, art) {
+    const el = $('#konto-meldung');
+    el.textContent = text;
+    el.className = 'konto-meldung ' + art;
+    el.hidden = false;
+    clearTimeout(kontoMeldungTimer);
+    kontoMeldungTimer = setTimeout(() => { el.hidden = true; }, 12000);
   }
 
   async function pruefeKonto(beimOeffnen, erzwingen) {

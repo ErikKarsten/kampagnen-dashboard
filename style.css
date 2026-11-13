@@ -474,6 +474,8 @@ td.kname { white-space: normal; min-width: 220px; }
 .konto-stand button { padding: 2px 8px; background: transparent; color: var(--beige); border: 1px solid rgba(220, 203, 185, .6); font-size: 12px; font-weight: 700; cursor: pointer; }
 .konto-stand button:hover { background: rgba(255, 255, 255, .1); }
 .konto-stand button:disabled { opacity: .5; cursor: progress; }
+.konto-meldung { max-width: 62ch; margin: 8px 0 0; padding: 8px 12px; font-size: 13px; font-weight: 600; background: rgba(255, 255, 255, .1); color: var(--weiss); border-left: 3px solid var(--beige); }
+.konto-meldung.gut { border-left-color: #5fd18f; }
 .alarm-leiste.warnung button { background: var(--warnung); color: var(--weiss); }
 .alarm-leiste button:focus-visible { outline: 3px solid var(--navy); outline-offset: 2px; }
 @keyframes alarm-puls { 0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .8); } 70% { box-shadow: 0 0 0 12px rgba(255, 255, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); } }
