@@ -832,6 +832,7 @@
   };
   const KAMPAGNEN_FILTER = { alle: 'Alle', laeuft: 'Laufen', pausiert: 'Pausiert' };
   const kampagnenAnsicht = { ziel: null, liste: [] };
+  const KAMPAGNEN_SEITE = 24;
 
   function zeichneKampagnen() {
     const D = zustand.daten;
@@ -841,17 +842,22 @@
     const alle = kampagnenAnsicht.liste;
     const liste = alle.filter((k) => filter === 'alle' || (filter === 'laeuft' ? k.laeuft : !k.laeuft)).sort(sortiere);
     const laufen = alle.filter((k) => k.laeuft).length;
+    const anzahl = zustand.kampagnenAnzahl || KAMPAGNEN_SEITE;
+    const rest = liste.length - anzahl;
     kampagnenAnsicht.ziel.replaceChildren(
       h('div', { class: 'werkzeugleiste' },
         h('div', { class: 'feld' }, 'Zeigen',
           h('div', { class: 'umschalter', role: 'group', 'aria-label': 'Kampagnen filtern' }, Object.entries(KAMPAGNEN_FILTER).map(([wert, text]) => h('button', {
             type: 'button', 'aria-pressed': String(filter === wert),
-            onclick: () => { zustand.kampagnenFilter = wert; zeichneKampagnen(); },
+            onclick: () => { zustand.kampagnenFilter = wert; zustand.kampagnenAnzahl = KAMPAGNEN_SEITE; zeichneKampagnen(); },
           }, `${text} (${wert === 'alle' ? alle.length : wert === 'laeuft' ? laufen : alle.length - laufen})`)))),
-        h('label', { class: 'feld' }, 'Sortieren', h('select', { onchange: (e) => { zustand.kampagnenSort = e.target.value; zeichneKampagnen(); } },
+        h('label', { class: 'feld' }, 'Sortieren', h('select', { onchange: (e) => { zustand.kampagnenSort = e.target.value; zustand.kampagnenAnzahl = KAMPAGNEN_SEITE; zeichneKampagnen(); } },
           Object.entries(KAMPAGNEN_SORT).map(([wert, [text]]) => h('option', { value: wert, selected: (zustand.kampagnenSort || 'leads') === wert }, text))))),
-      liste.length ? h('div', { class: 'kampagnen-raster' }, liste.map((k, i) => kampagnenKarte(k, D, i)))
+      liste.length ? h('div', { class: 'kampagnen-raster' }, liste.slice(0, anzahl).map((k, i) => kampagnenKarte(k, D, i)))
         : leer(filter === 'laeuft' ? 'Gestern hat keine Kampagne Geld ausgegeben.' : 'Im Zeitraum gibt es keine pausierten Kampagnen.'),
+      rest > 0 ? h('div', { class: 'mehr-zeile' },
+        h('button', { class: 'knopf knopf-rand', type: 'button', onclick: () => { zustand.kampagnenAnzahl = anzahl + KAMPAGNEN_SEITE; zeichneKampagnen(); } }, `${Math.min(rest, KAMPAGNEN_SEITE)} weitere zeigen`),
+        h('button', { class: 'knopf knopf-rand', type: 'button', onclick: () => { zustand.kampagnenAnzahl = liste.length; zeichneKampagnen(); } }, `Alle ${liste.length} zeigen`)) : null,
       kampagnenTabelle(liste));
   }
 
@@ -1052,7 +1058,7 @@
         starteZaehler(e.target);
         beobachter.unobserve(e.target);
       }
-    }, { threshold: 0.06, rootMargin: '0px 0px -40px 0px' });
+    }, { threshold: 0, rootMargin: '0px 0px -40px 0px' }); // 0: auch sehr lange Abschnitte erscheinen, sobald ein Teil sichtbar ist
     ziele.forEach((el) => beobachter.observe(el));
   }
 
