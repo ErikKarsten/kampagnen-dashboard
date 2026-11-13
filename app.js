@@ -1371,9 +1371,14 @@
   // „konto-live“ (Repo Meta-Analyse-Tool). Gibt es die Funktion noch nicht oder
   // klappt es gerade nicht, nimmt sie den Stand der stündlichen Prüfung aus
   // _konto/status.json im privaten Speicher „motive“. Fehlt beides, passiert nichts.
+  // „Jetzt prüfen“ startet ohne Live-Funktion eine echte Prüfung über GitHub
+  // (Workflow konto-check.yml), wenn dort ein eingeschränkter Schlüssel hinterlegt
+  // ist (_konto/pruef-zugang.json, nur für angemeldete Nutzer lesbar).
   const PRUEF_ABSTAND_MS = 60 * 1000;
+  const GITHUB_WARTEN_MS = 4 * 60 * 1000;   // so lange auf das Ergebnis warten
+  const GITHUB_TAKT_MS = 8 * 1000;          // so oft nachsehen, ob es da ist
   const SEITENTITEL = document.title;
-  const alarm = { befund: null, konto: null, gezeigt: null, timer: null, live: null, quelle: null, laeuft: false, fehler: null };
+  const alarm = { befund: null, konto: null, gezeigt: null, timer: null, live: null, quelle: null, laeuft: false, fehler: null, github: null };
 
   const zeitpunkt = (iso, zone) => {
     if (!iso) return '–';
@@ -1416,15 +1421,78 @@
     }
   }
 
-  async function ladeKontoStatus() {
+  // Kleine JSON-Datei aus dem privaten Speicher, immer frisch (am Browser-Zwischenspeicher vorbei)
+  async function ladeSpeicherJson(pfad) {
     try {
-      const { data, error } = await db.storage.from('motive').download('_konto/status.json');
+      const { data, error } = await db.storage.from('motive').createSignedUrl(pfad, 60);
       if (error || !data) return null;
-      const k = JSON.parse(await data.text());
-      return k && k.geprueft_am ? k : null;
+      const r = await fetch(data.signedUrl, { cache: 'no-store' });
+      return r.ok ? await r.json() : null;
     } catch (e) {
       return null;
     }
+  }
+
+  async function ladeKontoStatus() {
+    const k = await ladeSpeicherJson('_konto/status.json');
+    return k && k.geprueft_am ? k : null;
+  }
+
+  // Prüfung über GitHub starten. Liefert null bei Erfolg, sonst einen Satz, was nicht ging.
+  async function starteGithubPruefung(z) {
+    let r;
+    try {
+      r = await fetch(`https://api.github.com/repos/${z.repo}/actions/workflows/${z.workflow || 'konto-check.yml'}/dispatches`, {
+        method: 'POST',
+        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${z.token}`, 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref: z.ref || 'main' }),
+      });
+    } catch (e) {
+      return 'GitHub ist gerade nicht erreichbar. Prüf die Internetverbindung und versuch es gleich noch einmal.';
+    }
+    if (r.ok) return null;
+    if (r.status === 401) return 'Der GitHub-Schlüssel für „Jetzt prüfen“ ist abgelaufen oder ungültig. Leg einen neuen an und speichere ihn in GitHub als PRUEF_TOKEN.';
+    if (r.status === 403 || r.status === 404) return 'Der GitHub-Schlüssel für „Jetzt prüfen“ darf keine Prüfung starten. Er braucht beim Repo Meta-Analyse-Tool die Berechtigung „Actions: Read and write“.';
+    return `GitHub hat die Prüfung gerade nicht angenommen (Fehler ${r.status}). Versuch es gleich noch einmal.`;
+  }
+
+  const warte = (ms) => new Promise((fertig) => setTimeout(fertig, ms));
+
+  async function githubPruefung(zugang) {
+    const seit = Date.now();
+    alarm.github = { seit };
+    const fenster = $('#alarm');
+    const warOffen = fenster.open;
+    if (warOffen) fenster.close(); // damit man oben sieht, dass geprüft wird
+    zeigeKontoStand();
+    zeigeKontoMeldung('⏳ Prüfung gestartet: Meta wird jetzt abgefragt. Das dauert etwa 1 Minute, du kannst die Seite einfach offen lassen.', 'hinweis', true);
+    const fehler = await starteGithubPruefung(zugang);
+    if (fehler) {
+      alarm.github = null;
+      zeigeKontoStand();
+      zeigeKontoMeldung(fehler, 'hinweis');
+      return;
+    }
+    while (Date.now() - seit < GITHUB_WARTEN_MS) {
+      await warte(GITHUB_TAKT_MS);
+      if (!alarm.github) return; // abgemeldet
+      const k = await ladeKontoStatus();
+      // Neu ist nur, was nach dem Klick geprüft wurde (30 Sekunden Spielraum für ungenaue Uhren)
+      if (!k || new Date(k.geprueft_am).getTime() < seit - 30 * 1000) continue;
+      alarm.github = null;
+      alarm.quelle = 'github';
+      uebernehmeKonto(k, false);
+      const b = alarm.befund;
+      if (b && b.stufe === 'alarm') zeigeAlarmFenster();
+      else if (fenster.open && !b) fenster.close();
+      const ergebnis = !b ? 'Alles in Ordnung, das Werbekonto läuft.' : b.stufe === 'alarm' ? 'Die Kampagnen sind weiterhin offline.' : 'Es gibt eine Warnung, Details in der gelben Leiste.';
+      zeigeKontoMeldung(`✓ Gerade bei Meta geprüft (${zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '')}). ${ergebnis}`, b ? 'hinweis' : 'gut');
+      return;
+    }
+    alarm.github = null;
+    zeigeKontoStand();
+    zeigeKontoMeldung('Die Prüfung dauert länger als sonst (GitHub ist gerade langsam). Das Ergebnis erscheint von selbst, sobald es da ist, die Seite schaut jede Minute nach.', 'hinweis');
+    if (warOffen && alarm.befund) zeigeAlarmFenster();
   }
 
   // Was ist los? Liefert null, wenn alles in Ordnung ist.
@@ -1602,22 +1670,28 @@
     const art = !k ? 'pruefen' : !b ? 'gut' : b.stufe;
     const wort = { gut: 'Werbekonto läuft', warnung: 'Werbekonto: Warnung', alarm: 'Werbekonto: Kampagnen offline', pruefen: 'Werbekonto' }[art];
     const uhr = k ? zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '') : '';
-    const wann = alarm.laeuft ? 'wird geprüft …'
+    const wann = alarm.github ? 'Prüfung läuft, dauert etwa 1 Minute …'
+      : alarm.laeuft ? 'wird geprüft …'
       : alarm.quelle === 'live' ? `live geprüft ${uhr}`
         : alarm.fehler ? `Live-Prüfung gerade nicht möglich, Stand ${uhr}`
-          : `stündlich geprüft, zuletzt ${uhr}`;
+          : `zuletzt geprüft ${uhr}`;
     zeile.className = 'konto-stand ' + art;
     zeile.replaceChildren(
       h('span', { class: 'punkt', 'aria-hidden': 'true' }),
       h('span', null, `${wort} · ${wann}`),
-      h('button', { type: 'button', class: 'jetzt-pruefen', onclick: () => jetztPruefen(), disabled: alarm.laeuft }, 'Jetzt prüfen'));
+      h('button', { type: 'button', class: 'jetzt-pruefen', onclick: () => jetztPruefen(), disabled: alarm.laeuft || Boolean(alarm.github) }, alarm.github ? 'Läuft …' : 'Jetzt prüfen'));
     zeile.title = alarm.fehler && alarm.quelle !== 'live' ? `Live-Prüfung: ${alarm.fehler}` : '';
     zeile.hidden = false;
   }
 
   async function jetztPruefen() {
-    if (alarm.laeuft) return;
+    if (alarm.laeuft || alarm.github) return;
     await pruefeKonto(false, true);
+    // Keine Live-Prüfung: echte Prüfung über GitHub starten, wenn eingerichtet
+    if (alarm.quelle !== 'live') {
+      const zugang = await ladeSpeicherJson('_konto/pruef-zugang.json');
+      if (zugang && zugang.token && zugang.repo) { await githubPruefung(zugang); return; }
+    }
     const fenster = $('#alarm');
     if (fenster.open && !alarm.befund) fenster.close(); // Problem behoben
     else if (fenster.open && alarm.befund) zeigeAlarmFenster();
@@ -1627,20 +1701,20 @@
     const ergebnis = !alarm.befund ? 'Alles in Ordnung, das Werbekonto läuft.' : alarm.befund.stufe === 'alarm' ? 'Die Kampagnen sind offline.' : 'Es gibt eine Warnung, Details in der gelben Leiste.';
     let text;
     if (alarm.quelle === 'live') text = `✓ Gerade live bei Meta geprüft. ${ergebnis}`;
-    else if (alarm.live === false) text = `Die Live-Prüfung ist noch nicht eingerichtet. Du siehst den Stand der stündlichen Prüfung${uhr ? ` von ${uhr}` : ''}. Neue Werte kommen mit der nächsten Prüfung (jede Stunde um :17).`;
+    else if (alarm.live === false) text = `„Jetzt prüfen“ ist noch nicht eingerichtet. Du siehst den Stand der stündlichen Prüfung${uhr ? ` von ${uhr}` : ''}. Neue Werte kommen mit der nächsten Prüfung (jede Stunde um :17).`;
     else if (alarm.fehler) text = `Die Live-Prüfung hat gerade nicht geklappt (${alarm.fehler}). Du siehst den Stand${uhr ? ` von ${uhr}` : ''}.`;
     else text = k ? `Stand der stündlichen Prüfung${uhr ? ` von ${uhr}` : ''}.` : 'Noch keine Prüfung vorhanden.';
     zeigeKontoMeldung(text, alarm.quelle === 'live' ? 'gut' : 'hinweis');
   }
 
   let kontoMeldungTimer = null;
-  function zeigeKontoMeldung(text, art) {
+  function zeigeKontoMeldung(text, art, bleibt) {
     const el = $('#konto-meldung');
     el.textContent = text;
     el.className = 'konto-meldung ' + art;
     el.hidden = false;
     clearTimeout(kontoMeldungTimer);
-    kontoMeldungTimer = setTimeout(() => { el.hidden = true; }, 12000);
+    if (!bleibt) kontoMeldungTimer = setTimeout(() => { el.hidden = true; }, 15000);
   }
 
   async function pruefeKonto(beimOeffnen, erzwingen) {
@@ -1656,6 +1730,10 @@
       alarm.laeuft = false;
     }
     if (!k) { alarm.konto = null; zeichneAlarmLeiste(); zeigeKontoStand(); return; }
+    uebernehmeKonto(k, beimOeffnen);
+  }
+
+  function uebernehmeKonto(k, beimOeffnen) {
     alarm.konto = k;
     zeichneAlarmLeiste();
     zeigeKontoStand();
@@ -1677,6 +1755,7 @@
     alarm.konto = null;
     alarm.gezeigt = null;
     alarm.quelle = null;
+    alarm.github = null;
     zeichneAlarmLeiste();
     zeigeKontoStand();
     if ($('#alarm').open) $('#alarm').close();
