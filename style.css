@@ -270,6 +270,41 @@ input:focus, select:focus { border-color: var(--navy); outline: none; box-shadow
 .textlink { display: inline-block; margin-top: 8px; color: var(--navy); font-size: 14px; font-weight: 700; text-decoration: none; border-bottom: 1.5px solid var(--beige-dunkel); transition: border-color .2s; }
 .textlink:hover { border-bottom-color: var(--navy); }
 
+/* Lead-Qualität aus Kandidatenwerk */
+.qualitaet { margin-top: 20px; padding: 22px 24px; background: var(--weiss); box-shadow: var(--schatten); border-left: 5px solid var(--gut); }
+.q-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 14px; margin-bottom: 14px; }
+.q-kopf h3 { margin: 0; font-family: var(--serif); font-weight: 700; font-size: 18px; color: var(--navy); }
+.q-quelle { margin: 0; font-size: 13px; color: var(--leise); }
+.q-zahlen { display: grid; grid-template-columns: auto 1fr; gap: 14px 36px; align-items: center; }
+.q-haupt { display: flex; flex-direction: column; gap: 2px; font-size: 14px; font-weight: 600; color: var(--leise); }
+.q-wert { font-size: 52px; font-weight: 700; line-height: 1; color: var(--gut); letter-spacing: -.02em; }
+.q-neben { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; }
+.q-neben dt { font-size: 12px; font-weight: 700; color: var(--leise); }
+.q-neben dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; }
+.q-balken { display: flex; gap: 2px; height: 8px; margin-top: 8px; background: transparent; }
+.q-balken.gross { height: 14px; margin-top: 18px; }
+.q-balken span { display: block; height: 100%; }
+.q-vq { background: var(--gut); }
+.q-andere { background: #9aa6b4; }
+.q-neu { background: #d6dbe2; }
+.q-legende { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 8px 0 0; font-size: 13px; color: var(--leise); }
+.q-schluessel { display: inline-block; width: 12px; height: 12px; margin-left: 8px; }
+.q-schluessel:first-child { margin-left: 0; }
+.q-hinweis { margin: 12px 0 0; font-size: 13px; color: var(--leise); max-width: 95ch; }
+.quali-zeile { display: block; margin-top: 8px; padding: 8px 10px; background: var(--gut-hell); }
+.quali-text { font-size: 13px; font-weight: 700; color: var(--gut); }
+.quali-zeile .q-balken { margin-top: 6px; }
+.quali-fenster { margin-top: 4px; }
+.quali-fenster p { margin: 0; }
+.quali-status { margin: 12px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 18px; }
+.quali-status div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--linie); font-size: 14px; }
+.quali-status dt { color: var(--leise); }
+.quali-status dd { margin: 0; font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
+.quali-hinweis { margin: 10px 0 0; padding: 10px 14px; background: var(--gut-hell); font-size: 14px; }
+.quali-hinweis b { color: var(--gut); }
+.quali-hinweis span { color: var(--leise); }
+@media (max-width: 760px) { .q-zahlen { grid-template-columns: 1fr; } .q-neben { grid-template-columns: 1fr; } }
+
 /* Schritt 2: So entsteht ein Lead */
 .trichter-erkl { margin-bottom: 26px; padding: 22px 24px; background: var(--weiss); box-shadow: var(--schatten); }
 .trichter-titel { margin: 0 0 16px; font-family: var(--serif); font-weight: 700; font-size: 18px; color: var(--navy); }

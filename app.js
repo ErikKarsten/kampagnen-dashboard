@@ -215,6 +215,9 @@
     const verlauf = [];
     for (let k = von; k <= bis; k = plusTage(k, 1)) verlauf.push({ datum: k, ...(proTag.get(k) || { leads: 0, ausgaben: 0 }) });
 
+    // Lead-Qualität aus Kandidatenwerk (falls verbunden)
+    const quali = await ladeQualitaet(von, bis, new Set(anzeigen.map((a) => String(a.kampagne_id || ''))));
+
     // Bilder: zeitlich begrenzte Links aus dem privaten Speicher
     const bilder = new Map();
     const pfade = [...new Set(rows.map((r) => r.bild_pfad).filter(Boolean))];
@@ -226,7 +229,7 @@
     const ausgaben = rows.reduce((s, r) => s + r.ausgaben, 0);
     const leads = rows.reduce((s, r) => s + r.leads, 0);
     return {
-      von, bis, tage, rows, med, bilder, verlauf, duellTage, duellVorher,
+      von, bis, tage, rows, med, bilder, verlauf, duellTage, duellVorher, quali,
       summe: { ausgaben, leads, cpl: leads ? ausgaben / leads : null },
       gesamt: { impressionen: rows.reduce((s, r) => s + r.impressionen, 0), klicks: rows.reduce((s, r) => s + r.klicks, 0) },
       abgerufen: laeufe.data && laeufe.data[0] ? laeufe.data[0].beendet_am : null,
@@ -235,6 +238,91 @@
   }
 
   // ── Anzeige-Namen kurz und verständlich ───────────────────────────────────
+  // ── Lead-Qualität aus Kandidatenwerk ──────────────────────────────────────
+  // Das Meta-Analyse-Tool liest stündlich aus Kandidatenwerk, wie viele Meta-Leads
+  // je Kampagne und Tag welchen Status haben (nur Zahlen, siehe Repo Meta-Analyse-Tool,
+  // scripts/kandidatenwerk-sync.mjs). Kandidatenwerk ordnet Leads der Kampagne zu,
+  // nicht der einzelnen Anzeige.
+  const KW_STATUS = {
+    vorqualifiziert: 'Vorqualifiziert', neu: 'Neu, noch nicht bearbeitet', in_pruefung: 'In Prüfung', in_kontakt: 'In Kontakt',
+    nicht_erreicht: 'Nicht erreicht', nicht_erreicht_mail: '2× nicht erreicht + Mail', nicht_auf_suche: 'Derzeit nicht auf Suche',
+    abgelehnt: 'Abgelehnt', Archiviert: 'Archiviert',
+  };
+  const leereQualitaet = () => ({ gesamt: 0, vq: 0, neu: 0, status: {} });
+  function zaehleStatus(q, status, n) {
+    q.gesamt += n;
+    q.status[status] = (q.status[status] || 0) + n;
+    if (status === 'vorqualifiziert') q.vq += n;
+    if (status === 'neu') q.neu += n;
+  }
+  const quote = (q) => (q && q.gesamt ? (100 * q.vq) / q.gesamt : null);
+  const quoteBearbeitet = (q) => (q && q.gesamt - q.neu > 0 ? (100 * q.vq) / (q.gesamt - q.neu) : null);
+
+  async function ladeQualitaet(von, bis, kampagnenIds) {
+    try {
+      const { data, error } = await db.storage.from('motive').download('_kandidatenwerk/qualifizierung.json');
+      if (error || !data) return null;
+      const roh = JSON.parse(await data.text());
+      const jeKampagne = new Map();
+      const verknuepft = new Set();
+      const gesamt = leereQualitaet();
+      for (const [metaId, k] of Object.entries(roh.kampagnen || {})) {
+        if (!kampagnenIds.has(metaId)) continue; // andere Werbekonten, z. B. eigene Kampagnen von Kanzleien
+        verknuepft.add(metaId);
+        const q = leereQualitaet();
+        for (const [tag, zaehler] of Object.entries(k.tage || {})) {
+          if (tag < von || tag > bis) continue;
+          for (const [status, n] of Object.entries(zaehler || {})) { zaehleStatus(q, status, Number(n) || 0); zaehleStatus(gesamt, status, Number(n) || 0); }
+        }
+        jeKampagne.set(metaId, q);
+      }
+      return { stand: roh.stand, jeKampagne, verknuepft, gesamt };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Kleiner Balken: vorqualifiziert | anders bearbeitet | noch neu
+  function qualiBalken(q, gross) {
+    const teil = (n) => (q.gesamt ? (100 * n) / q.gesamt : 0);
+    const andere = q.gesamt - q.vq - q.neu;
+    return h('span', { class: 'q-balken' + (gross ? ' gross' : ''), role: 'img', 'aria-label': `${q.vq} vorqualifiziert, ${andere} anders bearbeitet, ${q.neu} noch nicht bearbeitet` },
+      q.vq ? h('span', { class: 'q-vq', style: `width:${teil(q.vq).toFixed(1)}%` }) : null,
+      andere ? h('span', { class: 'q-andere', style: `width:${teil(andere).toFixed(1)}%` }) : null,
+      q.neu ? h('span', { class: 'q-neu', style: `width:${teil(q.neu).toFixed(1)}%` }) : null);
+  }
+  const qualiSatz = (q) => (q.gesamt
+    ? `${z0(q.vq)} von ${z0(q.gesamt)} ${q.gesamt === 1 ? 'Lead' : 'Leads'} vorqualifiziert (${zahl.format(quote(q))}\u00a0%)`
+    : 'Im Zeitraum noch keine Leads in Kandidatenwerk');
+
+  function qualitaetsBlock(D) {
+    const Q = D.quali;
+    if (!Q || !Q.verknuepft.size) return null;
+    const q = Q.gesamt;
+    const ausgabenVerknuepft = D.rows.filter((r) => Q.verknuepft.has(String(r.kampagne_id))).reduce((s, r) => s + r.ausgaben, 0);
+    const metaLeads = D.rows.filter((r) => Q.verknuepft.has(String(r.kampagne_id))).reduce((s, r) => s + r.leads, 0);
+    const proVq = q.vq ? ausgabenVerknuepft / q.vq : null;
+    const andere = q.gesamt - q.vq - q.neu;
+    const qb = quoteBearbeitet(q);
+    return h('div', { class: 'qualitaet' },
+      h('div', { class: 'q-kopf' },
+        h('h3', null, 'Wie gut sind die Leads?'),
+        h('p', { class: 'q-quelle' }, `Laut Kandidatenwerk · Stand ${zeitpunkt(Q.stand)}`)),
+      h('div', { class: 'q-zahlen' },
+        h('div', { class: 'q-haupt' }, h('span', { class: 'q-wert' }, zaehler(q.vq)), h('span', null, `vorqualifiziert, ${q.gesamt ? `${zahl.format(quote(q))}\u00a0% von ${z0(q.gesamt)} Leads` : 'noch keine Leads'}`)),
+        h('dl', { class: 'q-neben' },
+          h('div', null, h('dt', null, 'Kosten pro vorqualifiziertem Lead'), h('dd', null, proVq != null ? euro(proVq) : '–')),
+          h('div', null, h('dt', null, 'Von den bearbeiteten Leads'), h('dd', null, qb != null ? `${zahl.format(qb)}\u00a0% vorqualifiziert` : '–')),
+          h('div', null, h('dt', null, 'Noch nicht bearbeitet'), h('dd', null, `${z0(q.neu)} ${q.neu === 1 ? 'Lead' : 'Leads'}`)))),
+      q.gesamt ? qualiBalken(q, true) : null,
+      q.gesamt ? h('p', { class: 'q-legende' },
+        h('span', { class: 'q-schluessel q-vq' }), 'Vorqualifiziert ', h('span', { class: 'q-schluessel q-andere' }), 'Anders bearbeitet (z. B. nicht erreicht, abgelehnt) ',
+        h('span', { class: 'q-schluessel q-neu' }), 'Noch nicht bearbeitet') : null,
+      h('p', { class: 'q-hinweis' }, `Gezählt werden die Meta-Leads der ${Q.verknuepft.size} mit Kandidatenwerk verknüpften Kampagnen, die im Zeitraum in Kandidatenwerk angekommen sind. ` +
+        `Meta meldet für diese Kampagnen ${z0(metaLeads)} Leads. Unterschiede entstehen durch doppelte Bewerbungen, Leads ohne E-Mail und Testleads. ` +
+        'Kandidatenwerk ordnet Leads der Kampagne zu, nicht der einzelnen Anzeige. Die Qualität steht deshalb in Schritt 5 bei jeder Kampagne.'));
+  }
+
   // Wer ist im Video? Nach Motiv-Typ (Video Neele … / Video Noah …)
   function personVon(typ) {
     const t = String(typ || '');
@@ -654,6 +742,7 @@
     return schritt(1, 'Wie viele Leads sind reingekommen?',
       'Die große Zahl ist das Wichtigste: alle Bewerbungen, die über die Anzeigen reingekommen sind. Die Grafik daneben zeigt, wie sie sich auf die Tage verteilen.',
       h('div', { class: 'ueberblick' }, held, tagesDiagramm(D)),
+      qualitaetsBlock(D),
       aufEinenBlick(D, A));
   }
 
@@ -889,6 +978,8 @@
       k.anzeigen.sort((a, b) => b.leads - a.leads || b.ausgaben - a.ausgaben);
       k.cpl = k.leads ? k.ausgaben / k.leads : null;
       k.laeuft = k.letzterTag === D.bis;
+      const metaId = String(k.anzeigen[0].kampagne_id || '');
+      k.quali = D.quali && D.quali.verknuepft.has(metaId) ? D.quali.jeKampagne.get(metaId) || leereQualitaet() : null;
       return k;
     });
   }
@@ -923,6 +1014,7 @@
         h('span', { class: 'anzeige-unter' }, unter),
         h('span', { class: 'anzeige-leads' }, h('b', null, z0(k.leads)), leadsWort(k.leads)),
         h('span', { class: 'anzeige-kosten' }, k.cpl != null ? `${euro(k.cpl)} pro Lead · ${euro(k.ausgaben)} ausgegeben` : `${euro(k.ausgaben)} ausgegeben, noch kein Lead`),
+        k.quali ? h('span', { class: 'quali-zeile' }, h('span', { class: 'quali-text' }, k.quali.gesamt ? ['✓ ', qualiSatz(k.quali)] : qualiSatz(k.quali)), k.quali.gesamt ? qualiBalken(k.quali) : null) : null,
         h('span', { class: 'mehr' }, 'Anzeigen ansehen ', h('span', { class: 'pfeil', 'aria-hidden': 'true' }, '→'))));
   }
 
@@ -930,6 +1022,7 @@
     leads: ['Meiste Leads zuerst', (a, b) => b.leads - a.leads || (a.cpl ?? Infinity) - (b.cpl ?? Infinity)],
     guenstig: ['Günstigste Leads zuerst', (a, b) => (a.cpl ?? Infinity) - (b.cpl ?? Infinity) || b.leads - a.leads],
     ausgaben: ['Höchste Ausgaben zuerst', (a, b) => b.ausgaben - a.ausgaben],
+    qualifiziert: ['Meiste vorqualifizierte zuerst', (a, b) => ((b.quali && b.quali.vq) || 0) - ((a.quali && a.quali.vq) || 0) || b.leads - a.leads],
     name: ['Name A bis Z', (a, b) => a.kurz.localeCompare(b.kurz, 'de')],
   };
   const KAMPAGNEN_FILTER = { alle: 'Alle', laeuft: 'Laufen', pausiert: 'Pausiert' };
@@ -990,6 +1083,12 @@
             h('div', null, h('dt', null, 'Ausgegeben'), h('dd', null, euro(k.ausgaben))),
             h('div', null, h('dt', null, 'Anzeigen'), h('dd', null, z0(k.anzeigen.length))),
             h('div', null, h('dt', null, 'Status'), h('dd', null, laufText(k))))),
+        k.quali ? h('div', { class: 'quali-fenster' },
+          h('h3', { class: 'h3' }, 'Lead-Qualität laut Kandidatenwerk'),
+          h('p', null, qualiSatz(k.quali), quoteBearbeitet(k.quali) != null && k.quali.neu ? `, von den bearbeiteten ${zahl.format(quoteBearbeitet(k.quali))}\u00a0%` : '', '.'),
+          k.quali.gesamt ? qualiBalken(k.quali, true) : null,
+          k.quali.gesamt ? h('dl', { class: 'quali-status' }, Object.entries(k.quali.status).sort((a, b) => b[1] - a[1]).map(([st, n]) =>
+            h('div', null, h('dt', null, KW_STATUS[st] || st), h('dd', null, z0(n))))) : null) : null,
         h('h3', { class: 'h3' }, k.anzeigen.length === 1 ? 'Die Anzeige dieser Kampagne' : `Alle ${k.anzeigen.length} Anzeigen dieser Kampagne, meiste Leads zuerst`),
         h('div', { class: 'galerie' }, k.anzeigen.map((r) => kleineKarte(r, D))),
         ohneBild ? h('p', { class: 'meta', style: 'margin-top:12px' }, `${ohneBild} ${ohneBild === 1 ? 'Anzeige hat' : 'Anzeigen haben'} noch kein Bild im Speicher.`) : null));
@@ -1054,10 +1153,11 @@
     return h('details', { class: 'falte' },
       h('summary', null, `Als Tabelle (${liste.length} ${liste.length === 1 ? 'Kampagne' : 'Kampagnen'})`),
       h('div', { class: 'falte-innen' }, h('div', { class: 'tabelle-huelle' }, h('table', null,
-        h('thead', null, h('tr', null, h('th', null, 'Kampagne'), h('th', null, 'Status'), h('th', { class: 'zahl' }, 'Leads'), h('th', { class: 'zahl' }, 'Kosten pro Lead'), h('th', { class: 'zahl' }, 'Ausgaben'), h('th', { class: 'zahl' }, 'Anzeigen'))),
+        h('thead', null, h('tr', null, h('th', null, 'Kampagne'), h('th', null, 'Status'), h('th', { class: 'zahl' }, 'Leads'), h('th', { class: 'zahl' }, 'Kosten pro Lead'), h('th', { class: 'zahl' }, 'Ausgaben'), h('th', { class: 'zahl' }, 'Anzeigen'), h('th', { class: 'zahl' }, 'Vorqualifiziert'))),
         h('tbody', null, liste.map((k) =>
           h('tr', null, h('td', { class: 'kname' }, k.name), h('td', null, laufText(k)), h('td', { class: 'zahl' }, z0(k.leads)),
-            h('td', { class: 'zahl' }, k.cpl != null ? euro(k.cpl) : 'kein Lead'), h('td', { class: 'zahl' }, euro(k.ausgaben)), h('td', { class: 'zahl' }, z0(k.anzeigen.length)))))))));
+            h('td', { class: 'zahl' }, k.cpl != null ? euro(k.cpl) : 'kein Lead'), h('td', { class: 'zahl' }, euro(k.ausgaben)), h('td', { class: 'zahl' }, z0(k.anzeigen.length)),
+            h('td', { class: 'zahl' }, k.quali && k.quali.gesamt ? `${z0(k.quali.vq)} von ${z0(k.quali.gesamt)}` : '–'))))))));
   }
 
   function begriffe() {
@@ -1114,6 +1214,13 @@
               h('div', null, h('dt', null, 'Klicks'), h('dd', null, z0(r.klicks))),
               h('div', null, h('dt', null, 'Einblendungen'), h('dd', null, z0(r.impressionen))))),
           h('p', { class: 'detail-urteil ' + ku }, urteil),
+          (() => {
+            const id = String(r.kampagne_id || '');
+            if (!D.quali || !D.quali.verknuepft.has(id)) return null;
+            const q = D.quali.jeKampagne.get(id) || leereQualitaet();
+            return h('p', { class: 'quali-hinweis' }, h('b', null, 'Lead-Qualität der Kampagne: '), `${qualiSatz(q)}. `,
+              h('span', null, 'Kandidatenwerk ordnet Leads der Kampagne zu, nicht der einzelnen Anzeige.'));
+          })(),
           h('h3', { class: 'h3' }, 'Wo die Anzeige Leads gewinnt oder verliert'),
           h('ol', { class: 'diagnose' }, d.stufen.map((s, i) => h('li', { class: 'diag ' + s.urteil },
             h('span', { class: 'diag-symbol', 'aria-hidden': 'true' }, SYMBOL[s.urteil] || '?'),
