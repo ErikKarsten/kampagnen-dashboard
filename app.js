@@ -320,7 +320,7 @@
         h('span', { class: 'q-schluessel q-neu' }), 'Noch nicht bearbeitet') : null,
       h('p', { class: 'q-hinweis' }, `Gezählt werden die Meta-Leads der ${Q.verknuepft.size} mit Kandidatenwerk verknüpften Kampagnen, die im Zeitraum in Kandidatenwerk angekommen sind. ` +
         `Meta meldet für diese Kampagnen ${z0(metaLeads)} Leads. Unterschiede entstehen durch doppelte Bewerbungen, Leads ohne E-Mail und Testleads. ` +
-        'Kandidatenwerk ordnet Leads der Kampagne zu, nicht der einzelnen Anzeige. Die Qualität steht deshalb in Schritt 5 bei jeder Kampagne.'));
+        'Kandidatenwerk ordnet Leads der Kampagne zu, deshalb steht die Qualität in Schritt 5 bei jeder Kampagne.'));
   }
 
   // Wer ist im Video? Nach Motiv-Typ (Video Neele … / Video Noah …)
@@ -1214,13 +1214,6 @@
               h('div', null, h('dt', null, 'Klicks'), h('dd', null, z0(r.klicks))),
               h('div', null, h('dt', null, 'Einblendungen'), h('dd', null, z0(r.impressionen))))),
           h('p', { class: 'detail-urteil ' + ku }, urteil),
-          (() => {
-            const id = String(r.kampagne_id || '');
-            if (!D.quali || !D.quali.verknuepft.has(id)) return null;
-            const q = D.quali.jeKampagne.get(id) || leereQualitaet();
-            return h('p', { class: 'quali-hinweis' }, h('b', null, 'Lead-Qualität der Kampagne: '), `${qualiSatz(q)}. `,
-              h('span', null, 'Kandidatenwerk ordnet Leads der Kampagne zu, nicht der einzelnen Anzeige.'));
-          })(),
           h('h3', { class: 'h3' }, 'Wo die Anzeige Leads gewinnt oder verliert'),
           h('ol', { class: 'diagnose' }, d.stufen.map((s, i) => h('li', { class: 'diag ' + s.urteil },
             h('span', { class: 'diag-symbol', 'aria-hidden': 'true' }, SYMBOL[s.urteil] || '?'),

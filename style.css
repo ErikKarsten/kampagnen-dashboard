@@ -300,9 +300,6 @@ input:focus, select:focus { border-color: var(--navy); outline: none; box-shadow
 .quali-status div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--linie); font-size: 14px; }
 .quali-status dt { color: var(--leise); }
 .quali-status dd { margin: 0; font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
-.quali-hinweis { margin: 10px 0 0; padding: 10px 14px; background: var(--gut-hell); font-size: 14px; }
-.quali-hinweis b { color: var(--gut); }
-.quali-hinweis span { color: var(--leise); }
 @media (max-width: 760px) { .q-zahlen { grid-template-columns: 1fr; } .q-neben { grid-template-columns: 1fr; } }
 
 /* Schritt 2: So entsteht ein Lead */
