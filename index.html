@@ -10,7 +10,7 @@
   <link rel="preload" href="raleway-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="merriweather-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="icon-192.png">
-  <link rel="stylesheet" href="style.css?v=2026-11-11-8">
+  <link rel="stylesheet" href="style.css?v=2026-11-13-1">
 </head>
 <body>
   <section id="login" class="login" hidden>
@@ -60,7 +60,8 @@
         <a href="#schritt-gut"><span class="nr">2</span>Was Leads bringt</a>
         <a href="#schritt-schlecht"><span class="nr">3</span>Was hakt</a>
         <a href="#schritt-motive"><span class="nr">4</span>Motive</a>
-        <a href="#schritt-alle"><span class="nr">5</span>Alle Anzeigen</a>
+        <a href="#schritt-kampagnen"><span class="nr">5</span>Kampagnen</a>
+        <a href="#schritt-alle"><span class="nr">6</span>Alle Anzeigen</a>
         <button type="button" id="anleitung" class="schritte-hilfe">Anleitung</button>
       </div>
       <div class="fortschritt" aria-hidden="true"><span id="fortschritt-balken"></span></div>
@@ -73,12 +74,13 @@
   </div>
 
   <div id="tooltip" class="tooltip" hidden></div>
+  <dialog id="kampagne" class="detail-fenster" aria-label="Kampagne im Detail"></dialog>
   <dialog id="detail" class="detail-fenster" aria-label="Anzeige im Detail"></dialog>
   <dialog id="alarm" class="alarm-fenster" aria-labelledby="alarm-titel"></dialog>
   <dialog id="push" class="push-fenster" aria-labelledby="push-titel"></dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=2026-11-11-8"></script>
+  <script src="app.js?v=2026-11-13-1"></script>
 </body>
 </html>

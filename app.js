@@ -7,7 +7,7 @@
   // ── Feste Regeln des Dashboards ───────────────────────────────────────────
   const MIN_LEADS_TOP = 5;            // Schritt 2: bringt die meisten Leads
   const MIN_AUSGABE_LISTE = 100;      // Schritt 3: bringt kaum Leads
-  const MIN_AUSGABE_GALERIE = 50;     // Schritt 5 und Vergleichsbasis (Schnitt)
+  const MIN_AUSGABE_GALERIE = 50;     // Schritt 6 und Vergleichsbasis (Schnitt)
   const MIN_AUSGABE_VERGLEICH = 100;  // Noah gegen Neele
   const MIN_AUSGABE_TEUERSTER = 300;  // teuerster Motiv-Typ
   const MIN_LEADS_BESTER = 10;        // günstigster Motiv-Typ
@@ -21,6 +21,7 @@
     { id: 'schritt-gut', kurz: 'Was Leads bringt', frage: 'Welche Anzeigen bringen die meisten Leads, und warum?' },
     { id: 'schritt-schlecht', kurz: 'Was hakt', frage: 'Welche Anzeigen bringen kaum Leads, und woran liegt das?' },
     { id: 'schritt-motive', kurz: 'Motive', frage: 'Welche Motive bringen Leads?' },
+    { id: 'schritt-kampagnen', kurz: 'Kampagnen', frage: 'Alle Kampagnen mit ihren Motiven' },
     { id: 'schritt-alle', kurz: 'Alle Anzeigen', frage: 'Alle Anzeigen zum Nachschlagen' },
   ];
 
@@ -137,8 +138,10 @@
     // Zahlen pro Anzeige zusammenzählen
     const summen = new Map();
     for (const z of zahlen) {
-      const s = summen.get(z.anzeige_id) || { ausgaben: 0, impressionen: 0, klicks: 0, leads: 0, v3: 0, thru: 0 };
+      const s = summen.get(z.anzeige_id) || { ausgaben: 0, impressionen: 0, klicks: 0, leads: 0, v3: 0, thru: 0, letzterTag: null };
       s.ausgaben += Number(z.ausgaben) || 0;
+      const tag = String(z.datum).slice(0, 10);
+      if (Number(z.ausgaben) > 0 && (!s.letzterTag || tag > s.letzterTag)) s.letzterTag = tag;
       s.impressionen += Number(z.impressionen) || 0;
       s.klicks += Number(z.link_klicks) || 0;
       s.leads += Number(z.leads) || 0;
@@ -159,6 +162,7 @@
           leads: s.leads,
           v3: s.v3,
           thru: s.thru,
+          letzterTag: s.letzterTag,
           cpl: s.leads ? s.ausgaben / s.leads : null,
           ctr: s.impressionen ? (100 * s.klicks) / s.impressionen : null,
           cr: s.klicks ? (100 * s.leads) / s.klicks : null,
@@ -211,6 +215,12 @@
   }
 
   // ── Anzeige-Namen kurz und verständlich ───────────────────────────────────
+  function kampagnenName(text) {
+    let k = String(text || '').replace(/^KS24\s*-\s*/, '');
+    k = k.replace(/\s*[–-]?\s*\(?\d{1,2}\/\d{1,2}(\/\d{2,4})?\)?/g, ' ');
+    return k.replace(/\s+[–-]\s*$/, '').replace(/\s{2,}/g, ' ').trim() || String(text || 'Ohne Kampagne');
+  }
+
   function kurzname(r) {
     const typ = String(r.typ || '');
     if (r.region) return `${typ.replace(/ regional$/, '')}, ${r.region}`;
@@ -467,7 +477,7 @@
     return h('section', { class: 'einstieg', id: 'einstieg', 'aria-label': 'So funktioniert dieser Bericht', hidden: speicher.lies('einstieg-weg') === '1' },
       h('div', null,
         h('p', { class: 'einstieg-titel' }, 'So funktioniert dieser Bericht'),
-        h('p', { class: 'einstieg-text' }, 'Der Bericht führt dich in fünf Schritten durch die Zahlen. Im Mittelpunkt stehen die Leads. Lies einfach von oben nach unten, oder spring über die Leiste oben direkt zu einem Schritt.')),
+        h('p', { class: 'einstieg-text' }, `Der Bericht führt dich in ${['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben'][SCHRITTE.length]} Schritten durch die Zahlen. Im Mittelpunkt stehen die Leads. Lies einfach von oben nach unten, oder spring über die Leiste oben direkt zu einem Schritt.`)),
       h('ol', { class: 'einstieg-liste' }, SCHRITTE.map((s, i) => h('li', null, h('span', { class: 'nr' }, i + 1), s.frage))),
       h('div', { class: 'einstieg-knoepfe' },
         h('button', { class: 'knopf', type: 'button', onclick: () => { zu(); springe('#schritt-ueberblick'); } }, 'Los geht’s'),
@@ -757,10 +767,130 @@
         zeile.addEventListener('blur', versteckeTip);
         return zeile;
       })),
-      h('p', { class: 'motiv-fuss' }, `Helle Balken: weniger als ${MIN_LEADS_SICHER} Leads, das kann noch Zufall sein. Klick auf ein Motiv, um seine Anzeigen in Schritt 5 zu sehen.`));
+      h('p', { class: 'motiv-fuss' }, `Helle Balken: weniger als ${MIN_LEADS_SICHER} Leads, das kann noch Zufall sein. Klick auf ein Motiv, um seine Anzeigen in Schritt 6 zu sehen.`));
   }
 
-  // ── Schritt 5: Alle Anzeigen ──────────────────────────────────────────────
+  // ── Schritt 5: Alle Kampagnen mit Bildern ─────────────────────────────────
+  function kampagnenAus(D) {
+    const karte = new Map();
+    for (const r of D.rows) {
+      const name = r.kampagne || 'Ohne Kampagne';
+      const k = karte.get(name) || { name, kurz: kampagnenName(name), art: r.art, regionen: new Set(), anzeigen: [], ausgaben: 0, leads: 0, letzterTag: null };
+      k.anzeigen.push(r);
+      k.ausgaben += r.ausgaben;
+      k.leads += r.leads;
+      if (r.region) k.regionen.add(r.region);
+      if (r.letzterTag && (!k.letzterTag || r.letzterTag > k.letzterTag)) k.letzterTag = r.letzterTag;
+      karte.set(name, k);
+    }
+    return [...karte.values()].map((k) => {
+      k.anzeigen.sort((a, b) => b.leads - a.leads || b.ausgaben - a.ausgaben);
+      k.cpl = k.leads ? k.ausgaben / k.leads : null;
+      k.laeuft = k.letzterTag === D.bis;
+      return k;
+    });
+  }
+
+  const laufText = (k) => (k.laeuft ? 'Läuft' : k.letzterTag ? `Pausiert, zuletzt am ${kurzDatum(k.letzterTag)}` : 'Pausiert');
+
+  function collage(k, D) {
+    const bilder = [];
+    const gesehen = new Set();
+    for (const r of k.anzeigen) {
+      const url = r.bild_pfad && D.bilder.get(r.bild_pfad);
+      if (url && !gesehen.has(url)) { gesehen.add(url); bilder.push({ url, video: r.format === 'Video' }); }
+    }
+    const zeigen = bilder.slice(0, 4);
+    const mehr = k.anzeigen.length - zeigen.length;
+    return h('span', { class: `collage n${Math.max(1, zeigen.length)}${zeigen.length ? '' : ' leer'}` },
+      zeigen.length ? zeigen.map((b, i) => h('span', { class: 'zelle' },
+        h('img', { src: b.url, alt: '', loading: 'lazy' }),
+        i === zeigen.length - 1 && mehr > 0 ? h('span', { class: 'mehr-bilder' }, `+${mehr}`) : null))
+        : h('span', null, 'Kein Bild'),
+      h('span', { class: 'lauf-marke' + (k.laeuft ? '' : ' pausiert') }, h('span', { class: 'punkt', 'aria-hidden': 'true' }), laufText(k)));
+  }
+
+  function kampagnenKarte(k, D, i) {
+    const urteil = !D.summe.cpl ? '' : k.cpl == null ? (k.ausgaben >= MIN_AUSGABE_GALERIE ? 'schlecht' : '')
+      : k.cpl <= D.summe.cpl * 0.8 ? 'gut' : k.cpl >= D.summe.cpl * 1.5 ? 'schlecht' : '';
+    const unter = [k.art, k.regionen.size === 1 ? [...k.regionen][0] : null, `${k.anzeigen.length} ${k.anzeigen.length === 1 ? 'Anzeige' : 'Anzeigen'}`].filter(Boolean).join(' · ');
+    return h('button', { class: `anzeige kampagne-karte eintritt ${urteil}`, style: `--i:${Math.min(i, 8)}`, type: 'button', onclick: () => oeffneKampagne(k) },
+      collage(k, D),
+      h('span', { class: 'anzeige-text' },
+        h('span', { class: 'anzeige-name' }, k.kurz),
+        h('span', { class: 'anzeige-unter' }, unter),
+        h('span', { class: 'anzeige-leads' }, h('b', null, z0(k.leads)), leadsWort(k.leads)),
+        h('span', { class: 'anzeige-kosten' }, k.cpl != null ? `${euro(k.cpl)} pro Lead · ${euro(k.ausgaben)} ausgegeben` : `${euro(k.ausgaben)} ausgegeben, noch kein Lead`),
+        h('span', { class: 'mehr' }, 'Anzeigen ansehen ', h('span', { class: 'pfeil', 'aria-hidden': 'true' }, '→'))));
+  }
+
+  const KAMPAGNEN_SORT = {
+    leads: ['Meiste Leads zuerst', (a, b) => b.leads - a.leads || (a.cpl ?? Infinity) - (b.cpl ?? Infinity)],
+    guenstig: ['Günstigste Leads zuerst', (a, b) => (a.cpl ?? Infinity) - (b.cpl ?? Infinity) || b.leads - a.leads],
+    ausgaben: ['Höchste Ausgaben zuerst', (a, b) => b.ausgaben - a.ausgaben],
+    name: ['Name A bis Z', (a, b) => a.kurz.localeCompare(b.kurz, 'de')],
+  };
+  const KAMPAGNEN_FILTER = { alle: 'Alle', laeuft: 'Laufen', pausiert: 'Pausiert' };
+  const kampagnenAnsicht = { ziel: null, liste: [] };
+
+  function zeichneKampagnen() {
+    const D = zustand.daten;
+    if (!D || !kampagnenAnsicht.ziel) return;
+    const filter = zustand.kampagnenFilter || 'alle';
+    const sortiere = (KAMPAGNEN_SORT[zustand.kampagnenSort] || KAMPAGNEN_SORT.leads)[1];
+    const alle = kampagnenAnsicht.liste;
+    const liste = alle.filter((k) => filter === 'alle' || (filter === 'laeuft' ? k.laeuft : !k.laeuft)).sort(sortiere);
+    const laufen = alle.filter((k) => k.laeuft).length;
+    kampagnenAnsicht.ziel.replaceChildren(
+      h('div', { class: 'werkzeugleiste' },
+        h('div', { class: 'feld' }, 'Zeigen',
+          h('div', { class: 'umschalter', role: 'group', 'aria-label': 'Kampagnen filtern' }, Object.entries(KAMPAGNEN_FILTER).map(([wert, text]) => h('button', {
+            type: 'button', 'aria-pressed': String(filter === wert),
+            onclick: () => { zustand.kampagnenFilter = wert; zeichneKampagnen(); },
+          }, `${text} (${wert === 'alle' ? alle.length : wert === 'laeuft' ? laufen : alle.length - laufen})`)))),
+        h('label', { class: 'feld' }, 'Sortieren', h('select', { onchange: (e) => { zustand.kampagnenSort = e.target.value; zeichneKampagnen(); } },
+          Object.entries(KAMPAGNEN_SORT).map(([wert, [text]]) => h('option', { value: wert, selected: (zustand.kampagnenSort || 'leads') === wert }, text))))),
+      liste.length ? h('div', { class: 'kampagnen-raster' }, liste.map((k, i) => kampagnenKarte(k, D, i)))
+        : leer(filter === 'laeuft' ? 'Gestern hat keine Kampagne Geld ausgegeben.' : 'Im Zeitraum gibt es keine pausierten Kampagnen.'),
+      kampagnenTabelle(liste));
+  }
+
+  function schrittKampagnen(D) {
+    kampagnenAnsicht.liste = kampagnenAus(D);
+    kampagnenAnsicht.ziel = h('div');
+    zeichneKampagnen();
+    return schritt(5, 'Alle Kampagnen auf einen Blick',
+      `Jede Kampagne, die im Zeitraum Geld ausgegeben hat, mit den Motiven ihrer Anzeigen. „Läuft“ heißt: Sie hat am ${datum(D.bis)} (letzter Tag mit Daten) noch Geld ausgegeben. Klick auf eine Kampagne, um alle ihre Anzeigen zu sehen.`,
+      kampagnenAnsicht.ziel);
+  }
+
+  function oeffneKampagne(k) {
+    const D = zustand.daten;
+    const fenster = $('#kampagne');
+    const ohneBild = k.anzeigen.filter((r) => !(r.bild_pfad && D.bilder.get(r.bild_pfad))).length;
+    fenster.replaceChildren(
+      h('div', { class: 'detail-kopf' },
+        h('div', null,
+          h('p', { class: 'detail-name' }, k.kurz),
+          h('p', { class: 'detail-unter' }, [k.art, laufText(k), k.name !== k.kurz ? k.name : null].filter(Boolean).join(' · '))),
+        h('button', { class: 'knopf knopf-hell', type: 'button', onclick: () => fenster.close() }, 'Schließen')),
+      h('div', { class: 'kampagne-inhalt' },
+        h('div', { class: 'detail-zahlen' },
+          h('div', null, h('span', { class: 'dz-wert' }, z0(k.leads)), h('span', { class: 'dz-label' }, `${leadsWort(k.leads)} im Zeitraum`)),
+          h('dl', { class: 'dz-neben' },
+            h('div', null, h('dt', null, 'Kosten pro Lead'), h('dd', null, k.cpl != null ? euro(k.cpl) : 'kein Lead')),
+            h('div', null, h('dt', null, 'Ausgegeben'), h('dd', null, euro(k.ausgaben))),
+            h('div', null, h('dt', null, 'Anzeigen'), h('dd', null, z0(k.anzeigen.length))),
+            h('div', null, h('dt', null, 'Status'), h('dd', null, laufText(k))))),
+        h('h3', { class: 'h3' }, k.anzeigen.length === 1 ? 'Die Anzeige dieser Kampagne' : `Alle ${k.anzeigen.length} Anzeigen dieser Kampagne, meiste Leads zuerst`),
+        h('div', { class: 'galerie' }, k.anzeigen.map((r) => kleineKarte(r, D))),
+        ohneBild ? h('p', { class: 'meta', style: 'margin-top:12px' }, `${ohneBild} ${ohneBild === 1 ? 'Anzeige hat' : 'Anzeigen haben'} noch kein Bild im Speicher.`) : null));
+    versteckeTip();
+    if (!fenster.open) fenster.showModal();
+    fenster.scrollTop = 0;
+  }
+
+  // ── Schritt 6: Alle Anzeigen ──────────────────────────────────────────────
   const galerie = { ziel: null, auswahl: null };
   function zeigeMotiv(typ) {
     zustand.motiv = typ;
@@ -805,28 +935,21 @@
     galerie.ziel = h('div');
     zeichneGalerie();
 
-    return schritt(5, 'Alle Anzeigen im Detail',
+    return schritt(6, 'Alle Anzeigen im Detail',
       'Zum Nachschlagen. Klick auf eine Anzeige, um die ganze Auswertung zu sehen: alle drei Stufen, die Einschätzung von Claude und die Anzeigentexte.',
       h('div', { class: 'werkzeugleiste' }, h('label', { class: 'feld' }, 'Motiv', galerie.auswahl), h('label', { class: 'feld' }, 'Sortieren', sortierung)),
       galerie.ziel,
-      kampagnenTabelle(D),
       begriffe());
   }
 
-  function kampagnenTabelle(D) {
-    const kampagnen = new Map();
-    for (const r of D.rows) {
-      const k = kampagnen.get(r.kampagne) || { kampagne: r.kampagne || '–', ausgaben: 0, leads: 0 };
-      k.ausgaben += r.ausgaben; k.leads += r.leads;
-      kampagnen.set(r.kampagne, k);
-    }
+  function kampagnenTabelle(liste) {
     return h('details', { class: 'falte' },
-      h('summary', null, `Alle Kampagnen (${kampagnen.size})`),
+      h('summary', null, `Als Tabelle (${liste.length} ${liste.length === 1 ? 'Kampagne' : 'Kampagnen'})`),
       h('div', { class: 'falte-innen' }, h('div', { class: 'tabelle-huelle' }, h('table', null,
-        h('thead', null, h('tr', null, h('th', null, 'Kampagne'), h('th', { class: 'zahl' }, 'Leads'), h('th', { class: 'zahl' }, 'Kosten pro Lead'), h('th', { class: 'zahl' }, 'Ausgaben'))),
-        h('tbody', null, [...kampagnen.values()].sort((a, b) => b.leads - a.leads || b.ausgaben - a.ausgaben).map((k) =>
-          h('tr', null, h('td', { class: 'kname' }, k.kampagne), h('td', { class: 'zahl' }, z0(k.leads)),
-            h('td', { class: 'zahl' }, k.leads ? euro(k.ausgaben / k.leads) : 'kein Lead'), h('td', { class: 'zahl' }, euro(k.ausgaben)))))))));
+        h('thead', null, h('tr', null, h('th', null, 'Kampagne'), h('th', null, 'Status'), h('th', { class: 'zahl' }, 'Leads'), h('th', { class: 'zahl' }, 'Kosten pro Lead'), h('th', { class: 'zahl' }, 'Ausgaben'), h('th', { class: 'zahl' }, 'Anzeigen'))),
+        h('tbody', null, liste.map((k) =>
+          h('tr', null, h('td', { class: 'kname' }, k.name), h('td', null, laufText(k)), h('td', { class: 'zahl' }, z0(k.leads)),
+            h('td', { class: 'zahl' }, k.cpl != null ? euro(k.cpl) : 'kein Lead'), h('td', { class: 'zahl' }, euro(k.ausgaben)), h('td', { class: 'zahl' }, z0(k.anzeigen.length)))))))));
   }
 
   function begriffe() {
@@ -952,6 +1075,7 @@
       schrittGut(D, A),
       schrittSchlecht(D, A),
       schrittMotive(D, A),
+      schrittKampagnen(D),
       schrittAlle(D));
     beobachte(inhalt);
     aktualisiereLeiste();
@@ -1654,11 +1778,13 @@
     await db.auth.signOut();
     zustand.daten = null;
     if ($('#detail').open) $('#detail').close();
+    if ($('#kampagne').open) $('#kampagne').close();
     $('#inhalt').replaceChildren();
     zeige(false);
   });
 
   $('#detail').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+  $('#kampagne').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
   db.auth.getSession().then(({ data }) => zeige(Boolean(data && data.session)));
 })();
