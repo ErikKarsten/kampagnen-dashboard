@@ -192,6 +192,26 @@
       t.ausgaben += Number(z.ausgaben) || 0;
       proTag.set(k, t);
     }
+    // Duell Neele gegen Noah: Leads je Person pro Tag und im Zeitraum davor
+    const typVon = new Map(anzeigen.map((a) => [a.id, a.typ]));
+    const duellTage = new Map();
+    for (const z of zahlen) {
+      const wer = personVon(typVon.get(z.anzeige_id));
+      if (!wer) continue;
+      const k = String(z.datum).slice(0, 10);
+      const t = duellTage.get(k) || { neele: 0, noah: 0 };
+      t[wer] += Number(z.leads) || 0;
+      duellTage.set(k, t);
+    }
+    let duellVorher = null;
+    if (zahlenVorher) {
+      duellVorher = { neele: 0, noah: 0 };
+      for (const z of zahlenVorher) {
+        const wer = personVon(typVon.get(z.anzeige_id));
+        if (wer) duellVorher[wer] += Number(z.leads) || 0;
+      }
+    }
+
     const verlauf = [];
     for (let k = von; k <= bis; k = plusTage(k, 1)) verlauf.push({ datum: k, ...(proTag.get(k) || { leads: 0, ausgaben: 0 }) });
 
@@ -206,7 +226,7 @@
     const ausgaben = rows.reduce((s, r) => s + r.ausgaben, 0);
     const leads = rows.reduce((s, r) => s + r.leads, 0);
     return {
-      von, bis, tage, rows, med, bilder, verlauf,
+      von, bis, tage, rows, med, bilder, verlauf, duellTage, duellVorher,
       summe: { ausgaben, leads, cpl: leads ? ausgaben / leads : null },
       gesamt: { impressionen: rows.reduce((s, r) => s + r.impressionen, 0), klicks: rows.reduce((s, r) => s + r.klicks, 0) },
       abgerufen: laeufe.data && laeufe.data[0] ? laeufe.data[0].beendet_am : null,
@@ -215,6 +235,12 @@
   }
 
   // ── Anzeige-Namen kurz und verständlich ───────────────────────────────────
+  // Wer ist im Video? Nach Motiv-Typ (Video Neele … / Video Noah …)
+  function personVon(typ) {
+    const t = String(typ || '');
+    return /neele/i.test(t) ? 'neele' : /noah/i.test(t) && !/kanzleicheck/i.test(t) ? 'noah' : null;
+  }
+
   function kampagnenName(text) {
     let k = String(text || '').replace(/^KS24\s*-\s*/, '');
     k = k.replace(/\s*[–-]?\s*\(?\d{1,2}\/\d{1,2}(\/\d{2,4})?\)?/g, ' ');
@@ -470,6 +496,82 @@
         [`Weiter zu Schritt ${nr + 1}: ${naechster.kurz} `, h('span', { class: 'pfeil', 'aria-hidden': 'true' }, '↓')], 'weiter-knopf')) : null);
   }
   const leer = (text) => h('p', { class: 'leer' }, text);
+
+  // ── Anzeigetafel: Neele gegen Noah ────────────────────────────────────────
+  const PERSONEN = { neele: 'Neele', noah: 'Noah' };
+
+  function anzeigetafel(D, A) {
+    const p = { neele: { leads: 0, ausgaben: 0, anzeigen: 0, bestes: null }, noah: { leads: 0, ausgaben: 0, anzeigen: 0, bestes: null } };
+    for (const r of D.rows) {
+      const wer = personVon(r.typ);
+      if (!wer) continue;
+      const x = p[wer];
+      x.leads += r.leads; x.ausgaben += r.ausgaben; x.anzeigen += 1;
+      const hatBild = r.bild_pfad && D.bilder.get(r.bild_pfad);
+      if (hatBild && (!x.bestes || r.leads > x.bestes.leads)) x.bestes = r;
+    }
+    if (!p.neele.anzeigen && !p.noah.anzeigen) return null;
+    for (const wer of ['neele', 'noah']) p[wer].cpl = p[wer].leads ? p[wer].ausgaben / p[wer].leads : null;
+
+    const summe = p.neele.leads + p.noah.leads;
+    const vorne = p.neele.leads === p.noah.leads ? null : p.neele.leads > p.noah.leads ? 'neele' : 'noah';
+    const hinten = vorne === 'neele' ? 'noah' : 'neele';
+    const vorsprung = Math.abs(p.neele.leads - p.noah.leads);
+    const anteil = summe ? (100 * p.neele.leads) / summe : 50;
+
+    // Wertungen
+    const fuersGeld = p.neele.cpl == null || p.noah.cpl == null ? null
+      : Math.abs(p.neele.cpl - p.noah.cpl) < 0.5 ? 'gleich' : p.neele.cpl < p.noah.cpl ? 'neele' : 'noah';
+    const tage = [...(D.duellTage || new Map()).values()];
+    const siege = { neele: tage.filter((t) => t.neele > t.noah).length, noah: tage.filter((t) => t.noah > t.neele).length };
+    const nn = A.nn;
+
+    const kaempfer = (wer) => {
+      const x = p[wer];
+      const url = x.bestes && D.bilder.get(x.bestes.bild_pfad);
+      const vorher = D.duellVorher ? D.duellVorher[wer] : null;
+      return h('div', { class: `kaempfer ${wer}${vorne === wer ? ' fuehrt' : ''}` },
+        h('span', { class: 'avatar' },
+          url ? h('img', { src: url, alt: '' }) : h('span', { class: 'initiale' }, PERSONEN[wer][0]),
+          vorne === wer ? h('span', { class: 'krone', 'aria-hidden': 'true' }, '👑') : null),
+        h('span', { class: 'kaempfer-text' },
+          h('span', { class: 'kaempfer-name' }, PERSONEN[wer]),
+          h('span', { class: 'punktzahl' }, zaehler(x.leads)),
+          h('span', { class: 'punkt-label' }, `${leadsWort(x.leads)} · ${x.anzeigen} ${x.anzeigen === 1 ? 'Video' : 'Videos'}`),
+          vorher ? delta(x.leads, vorher, true, ['mehr', 'weniger'], false) : null));
+    };
+
+    const wertung = (titel, wert, zusatz) => h('li', null, h('span', null, titel), h('b', null, wert), zusatz ? h('small', null, zusatz) : null);
+    const name = (wer) => PERSONEN[wer];
+
+    return h('section', { class: 'duell einblenden', 'aria-label': 'Duell Neele gegen Noah' },
+      h('div', { class: 'duell-kopf' },
+        h('p', { class: 'duell-titel' }, '⚡ Duell: Wer bringt die meisten Leads?'),
+        h('p', { class: 'duell-zeit' }, `${datum(D.von)} bis ${datum(D.bis)}`)),
+      h('div', { class: 'duell-buehne' },
+        kaempfer('neele'),
+        h('div', { class: 'vs', 'aria-hidden': 'true' }, h('span', null, 'VS')),
+        kaempfer('noah')),
+      h('p', { class: 'duell-stand' }, vorne
+        ? [h('b', null, name(vorne)), ` führt mit ${z0(vorsprung)} ${leadsWort(vorsprung)} Vorsprung.`]
+        : 'Gleichstand!'),
+      h('div', { class: 'tauziehen', role: 'img', 'aria-label': `Anteil an den Leads: Neele ${Math.round(anteil)} %, Noah ${Math.round(100 - anteil)} %` },
+        h('div', { class: 'tz-balken' },
+          h('span', { class: 'tz-neele', style: `width:${anteil.toFixed(1)}%` }),
+          h('span', { class: 'tz-noah', style: `width:${(100 - anteil).toFixed(1)}%` })),
+        h('div', { class: 'tz-zahlen' },
+          h('span', null, `Neele ${Math.round(anteil)}\u00a0%`),
+          h('span', null, 'Anteil an den Leads'),
+          h('span', null, `${Math.round(100 - anteil)}\u00a0% Noah`))),
+      h('ul', { class: 'duell-wertungen' },
+        wertung('🏆 Meiste Leads', vorne ? name(vorne) : 'Gleichstand', vorne ? `${z0(p[vorne].leads)} zu ${z0(p[hinten].leads)}` : `je ${z0(p.neele.leads)}`),
+        wertung('💶 Meiste Leads fürs Geld', fuersGeld == null ? 'noch offen' : fuersGeld === 'gleich' ? 'Gleichstand' : name(fuersGeld),
+          fuersGeld && fuersGeld !== 'gleich' ? `${euro(p[fuersGeld].cpl)} statt ${euro(p[fuersGeld === 'neele' ? 'noah' : 'neele'].cpl)} pro Lead` : null),
+        wertung('📅 Tagessiege', `Neele ${siege.neele} : ${siege.noah} Noah`, 'Wer an einem Tag mehr Leads hatte'),
+        wertung('📍 Regionen-Duell', nn.gesamt ? `Neele ${nn.neele} : ${nn.noah} Noah` : 'noch offen',
+          nn.gesamt ? `Mehr Leads fürs Geld in ${nn.gesamt} Regionen` : 'Braucht Regionen, in denen beide laufen')),
+      h('p', { class: 'duell-fuss' }, 'Gezählt werden alle Videos mit Neele bzw. Noah, regional und bundesweit. Das Foto stammt aus dem jeweils erfolgreichsten Video.'));
+  }
 
   // ── Einstieg: So funktioniert der Bericht ─────────────────────────────────
   function einstieg() {
@@ -1075,14 +1177,16 @@
     }
     $('#zeitraum').textContent = `${datum(D.von)} bis ${datum(D.bis)}` + (D.abgerufen ? ` · zuletzt aktualisiert am ${datum(D.abgerufen)}` : '');
     const A = auswerten(D);
-    inhalt.replaceChildren(
+    inhalt.replaceChildren(...[
+      anzeigetafel(D, A),
       einstieg(),
       schrittUeberblick(D, A),
       schrittGut(D, A),
       schrittSchlecht(D, A),
       schrittMotive(D, A),
       schrittKampagnen(D),
-      schrittAlle(D));
+      schrittAlle(D),
+    ].filter(Boolean));
     beobachte(inhalt);
     aktualisiereLeiste();
     if (alarm.konto) zeichneAlarmLeiste(); // Restlaufzeit braucht die Tageszahlen

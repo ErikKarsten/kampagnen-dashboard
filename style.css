@@ -124,6 +124,63 @@ input:focus, select:focus { border-color: var(--navy); outline: none; box-shadow
 #inhalt { transition: opacity .25s; }
 #inhalt.laedt { opacity: .45; pointer-events: none; }
 
+/* Anzeigetafel: Neele gegen Noah */
+.duell { position: relative; overflow: hidden; margin: 0 0 24px; padding: 22px 28px 18px; color: var(--weiss); background: radial-gradient(130% 150% at 50% 0%, #123c70 0%, #0a2142 55%, #061529 100%); border-top: 4px solid var(--beige); box-shadow: var(--schatten-hoch); }
+.duell::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(90deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 80px); }
+.duell > * { position: relative; }
+.duell-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 14px; }
+.duell-titel { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--beige); }
+.duell-zeit { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .7); }
+.duell-buehne { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 18px; margin-top: 18px; }
+.kaempfer { --farbe: #BE872B; display: flex; align-items: center; gap: 20px; min-width: 0; }
+.kaempfer.noah { --farbe: #4F8BCF; flex-direction: row-reverse; text-align: right; }
+.avatar { position: relative; flex: none; width: 92px; height: 92px; }
+.avatar img, .avatar .initiale { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center 30%; border: 4px solid var(--farbe); background: #0d2a52; }
+.avatar .initiale { display: grid; place-items: center; font-size: 36px; font-weight: 700; color: var(--weiss); }
+.kaempfer.fuehrt .avatar img, .kaempfer.fuehrt .avatar .initiale { box-shadow: 0 0 0 5px rgba(255, 255, 255, .08), 0 0 34px 4px var(--farbe); }
+.krone { position: absolute; left: 50%; top: -26px; transform: translateX(-50%) rotate(-10deg); font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .4)); }
+.mit-bewegung .sichtbar .krone { animation: krone-wippt 2.4s ease-in-out infinite; }
+@keyframes krone-wippt { 0%, 100% { transform: translateX(-50%) rotate(-10deg); } 50% { transform: translateX(-50%) translateY(-3px) rotate(-4deg); } }
+.kaempfer-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kaempfer.noah .kaempfer-text { align-items: flex-end; }
+.kaempfer-name { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.kaempfer-name::before { content: ""; width: 22px; height: 4px; background: var(--farbe); }
+.kaempfer.noah .kaempfer-name { flex-direction: row-reverse; }
+.punktzahl { font-size: clamp(56px, 7vw, 88px); font-weight: 700; line-height: .95; letter-spacing: -.02em; font-variant-numeric: lining-nums tabular-nums; }
+.punkt-label { font-size: 13px; color: rgba(255, 255, 255, .72); }
+.kaempfer .delta { margin-top: 6px; font-size: 12px; padding: 3px 8px; background: rgba(255, 255, 255, .1); color: var(--weiss); }
+.kaempfer .delta.gut { background: rgba(120, 220, 160, .16); color: #a4e8c2; }
+.kaempfer .delta.schlecht { background: rgba(255, 140, 130, .16); color: #ffbab3; }
+.vs { display: grid; place-items: center; width: 58px; height: 58px; border: 2px solid rgba(220, 203, 185, .55); transform: rotate(45deg); background: rgba(255, 255, 255, .04); }
+.vs span { transform: rotate(-45deg); font-family: var(--serif); font-weight: 700; font-size: 20px; color: var(--beige); }
+.duell-stand { margin: 16px 0 0; text-align: center; font-size: 17px; }
+.duell-stand b { color: var(--beige); }
+.tauziehen { margin-top: 12px; }
+.tz-balken { display: flex; gap: 2px; height: 14px; }
+.tz-balken span { display: block; height: 100%; transition: transform 1s var(--tempo); }
+.tz-neele { background: #BE872B; transform-origin: left; }
+.tz-noah { background: #4F8BCF; transform-origin: right; }
+.mit-bewegung .duell:not(.sichtbar) .tz-balken span { transform: scaleX(0); }
+.tz-zahlen { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, .85); }
+.tz-zahlen span:nth-child(2) { font-weight: 500; color: rgba(255, 255, 255, .55); text-align: center; }
+.duell-wertungen { list-style: none; margin: 18px 0 0; padding: 16px 0 0; border-top: 1px solid rgba(255, 255, 255, .12); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 18px; }
+.duell-wertungen li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: rgba(255, 255, 255, .72); }
+.duell-wertungen b { font-size: 17px; color: var(--weiss); }
+.duell-wertungen small { font-size: 12px; color: rgba(255, 255, 255, .55); }
+.duell-fuss { margin: 14px 0 0; font-size: 12px; color: rgba(255, 255, 255, .5); }
+@media (max-width: 900px) { .duell-wertungen { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) {
+  .duell { padding: 18px 16px 14px; }
+  .duell-buehne { grid-template-columns: 1fr; gap: 10px; }
+  .kaempfer.noah { flex-direction: row; text-align: left; }
+  .kaempfer.noah .kaempfer-text { align-items: flex-start; }
+  .kaempfer.noah .kaempfer-name { flex-direction: row; }
+  .vs { width: 40px; height: 40px; justify-self: center; }
+  .vs span { font-size: 15px; }
+  .avatar { width: 72px; height: 72px; }
+  .duell-wertungen { grid-template-columns: 1fr; }
+}
+
 /* Einstieg */
 .einstieg { position: relative; background: var(--weiss); box-shadow: var(--schatten); border-left: 5px solid var(--navy); padding: 24px 26px; display: grid; gap: 16px; }
 .einstieg-titel { margin: 0; font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--navy); }
