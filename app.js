@@ -1728,8 +1728,7 @@
           ? `Live geprüft: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Die Seite prüft jede Minute neu.`
           : `Stand: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Geprüft wird nur, wenn jemand auf „Jetzt prüfen“ oder „Daten von Meta holen“ klickt.`),
         alt ? h('p', { class: 'meta' }, 'Die letzte Prüfung ist schon länger her. Vielleicht ist das Problem inzwischen behoben. Klick auf „Jetzt prüfen“, um den aktuellen Stand zu sehen.') : null,
-        istAlarm && !push.an && pushMoeglich() ? h('p', { class: 'push-tipp' }, 'Diesen Alarm auch bekommen, wenn die Seite zu ist? ',
-          h('button', { class: 'textknopf', type: 'button', onclick: () => { fenster.close(); zeichnePushFenster(); } }, 'Benachrichtigungen einschalten')) : null),
+        null),
       h('div', { class: 'alarm-knoepfe' },
         h('a', { class: 'knopf ' + (istAlarm ? 'knopf-rot' : 'knopf-warn'), href: adsManagerLink(k), target: '_blank', rel: 'noopener noreferrer' }, 'Werbeanzeigenmanager öffnen ↗'),
         h('button', { class: 'knopf knopf-rand', type: 'button', onclick: () => fenster.close() }, 'Verstanden'),
@@ -2051,184 +2050,25 @@
     }, 1000);
   }
 
-  // ── Benachrichtigungen auf dem Gerät (Web Push) ──────────────────────────
-  // Die stündliche Konto-Prüfung (Repo Meta-Analyse-Tool) schickt bei Alarm eine
-  // Mitteilung an alle Geräte, die hier eingeschaltet wurden, auch wenn die
-  // Seite zu ist. Das Gerät wird in den Profildaten des Logins gespeichert
-  // (user_metadata.push_abos), der Hintergrunddienst sw.js zeigt die Mitteilung.
-  const push = { registrierung: null, schluessel: null, an: false };
-  const pushMoeglich = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
-  const b64zuBytes = (text) => {
-    const roh = atob((text + '='.repeat((4 - (text.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
-    return Uint8Array.from(roh, (c) => c.charCodeAt(0));
-  };
-  function geraetName() {
-    const ua = navigator.userAgent;
-    const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
-    const system = /iPhone|iPad/.test(ua) ? 'iPhone/iPad' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : 'Linux';
-    return `${browser} auf ${system}`;
-  }
-
-  async function dienstRegistrieren() {
-    if (push.registrierung) return push.registrierung;
-    try { push.registrierung = await navigator.serviceWorker.register('sw.js'); } catch (e) { push.registrierung = null; }
-    return push.registrierung;
-  }
-  async function ladePushSchluessel() {
-    if (push.schluessel) return push.schluessel;
+  // ── Hintergrunddienst ─────────────────────────────────────────────────────
+  // Benachrichtigungen aufs Gerät gibt es nicht: Der Alarm erscheint nur hier auf
+  // der Seite. sw.js holt nur die Startseite immer frisch. Eine früher auf diesem
+  // Gerät eingeschaltete Benachrichtigung wird abgemeldet.
+  async function richteDienstEin() {
+    if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
     try {
-      const { data, error } = await db.storage.from('motive').download('_konto/push-schluessel.json');
-      if (!error && data) push.schluessel = JSON.parse(await data.text()).publicKey || null;
-    } catch (e) { /* noch nicht eingerichtet */ }
-    return push.schluessel;
+      const reg = await navigator.serviceWorker.register('sw.js');
+      const abo = reg.pushManager ? await reg.pushManager.getSubscription() : null;
+      if (abo) await abo.unsubscribe();
+    } catch (e) { /* egal */ }
   }
-  async function gespeicherteGeraete() {
-    const { data } = await db.auth.getUser();
-    const m = data && data.user && data.user.user_metadata;
-    return (m && Array.isArray(m.push_abos) ? m.push_abos : []).filter((a) => a && a.endpoint);
-  }
-  async function geraeteSpeichern(liste) {
-    const { error } = await db.auth.updateUser({ data: { push_abos: liste } });
-    if (error) throw error;
-  }
-
-  // 'nicht-moeglich' | 'blockiert' | 'an' | 'aus'
-  async function pushStatus() {
-    if (!pushMoeglich()) return { stand: 'nicht-moeglich' };
-    if (Notification.permission === 'denied') return { stand: 'blockiert' };
-    const reg = await dienstRegistrieren();
-    const abo = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
-    if (abo && Notification.permission === 'granted') {
-      const geraete = await gespeicherteGeraete().catch(() => []);
-      if (geraete.some((g) => g.endpoint === abo.endpoint)) return { stand: 'an', abo };
-    }
-    return { stand: 'aus', abo };
-  }
-
-  async function pushEinschalten() {
-    // Erlaubnis zuerst und direkt im Klick erfragen, sonst blockiert Safari
-    const erlaubnis = await Notification.requestPermission();
-    if (erlaubnis !== 'granted') return;
-    const [reg, schluessel] = await Promise.all([dienstRegistrieren(), ladePushSchluessel()]);
-    if (!schluessel) throw new Error('Die Benachrichtigungen werden gerade noch eingerichtet. Versuch es in ein paar Minuten noch einmal.');
-    if (!reg) throw new Error('Dein Browser lässt den Hintergrunddienst für Benachrichtigungen nicht zu.');
-    await navigator.serviceWorker.ready;
-    const optionen = { userVisibleOnly: true, applicationServerKey: b64zuBytes(schluessel) };
-    let abo = await reg.pushManager.getSubscription();
-    try {
-      if (!abo) abo = await reg.pushManager.subscribe(optionen);
-    } catch (e) {
-      if (!abo) throw e;
-    }
-    // Alter Schlüssel? Dann neu anmelden
-    const alterSchluessel = abo.options && abo.options.applicationServerKey;
-    if (alterSchluessel && btoa(String.fromCharCode(...new Uint8Array(alterSchluessel))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') !== schluessel.replace(/=+$/, '')) {
-      await abo.unsubscribe();
-      abo = await reg.pushManager.subscribe(optionen);
-    }
-    const j = abo.toJSON();
-    const andere = (await gespeicherteGeraete()).filter((g) => g.endpoint !== j.endpoint);
-    await geraeteSpeichern([...andere, { endpoint: j.endpoint, keys: j.keys, geraet: geraetName(), seit: new Date().toISOString() }]);
-  }
-
-  async function pushAusschalten() {
-    const reg = await dienstRegistrieren();
-    const abo = reg ? await reg.pushManager.getSubscription() : null;
-    if (abo) {
-      const endpoint = abo.endpoint;
-      await abo.unsubscribe().catch(() => {});
-      await geraeteSpeichern((await gespeicherteGeraete()).filter((g) => g.endpoint !== endpoint));
-    }
-  }
-
-  async function pushProbe() {
-    const reg = await dienstRegistrieren();
-    if (reg) await reg.showNotification('🔴 Kampagnen offline (Probe)', { body: 'So sieht ein Alarm aus. Ein Klick darauf öffnet die Kampagnenanalyse.', icon: 'icon-192.png', tag: 'kampagnen-probe', renotify: true, silent: false });
-  }
-
-  function zeigePushKnopf() {
-    const knopf = $('#benachrichtigungen');
-    knopf.hidden = false;
-    knopf.textContent = push.an ? '🔔 Benachrichtigungen an' : '🔕 Benachrichtigungen';
-  }
-
-  async function zeichnePushFenster(meldung) {
-    const fenster = $('#push');
-    const { stand } = await pushStatus();
-    push.an = stand === 'an';
-    zeigePushKnopf();
-    const knopf = (text, klasse, aktion) => h('button', {
-      class: 'knopf ' + (klasse || ''), type: 'button',
-      onclick: async (e) => {
-        const b = e.currentTarget;
-        b.disabled = true;
-        try { await aktion(); await zeichnePushFenster(); } catch (err) { await zeichnePushFenster({ fehler: err.message || String(err) }); }
-      },
-    }, text);
-    const STAND = {
-      'an': [h('p', { class: 'push-stand an' }, h('b', null, '✓ Auf diesem Gerät eingeschaltet'), ` (${geraetName()})`),
-        h('div', { class: 'push-knoepfe' }, knopf('Probe anzeigen', 'knopf-rand', pushProbe), knopf('Ausschalten', 'knopf-rand', pushAusschalten))],
-      'aus': [h('p', { class: 'push-stand' }, 'Auf diesem Gerät noch nicht eingeschaltet.'),
-        h('div', { class: 'push-knoepfe' }, knopf('🔔 Einschalten', '', pushEinschalten)),
-        h('p', { class: 'meta' }, 'Dein Browser fragt gleich, ob diese Seite Mitteilungen senden darf. Klick dort auf „Erlauben“.')],
-      'blockiert': [h('p', { class: 'push-stand blockiert' }, h('b', null, 'Mitteilungen sind für diese Seite blockiert.')),
-        h('p', null, 'So erlaubst du sie wieder:'),
-        h('ul', { class: 'push-liste' },
-          h('li', null, 'Safari: Menü Safari → Einstellungen → Websites → Mitteilungen, dort bei erikkarsten.github.io „Erlauben“ wählen.'),
-          h('li', null, 'Chrome: links neben der Adresse auf das Symbol klicken → Benachrichtigungen → Zulassen.')),
-        h('p', null, 'Danach die Seite neu laden und hier auf „Einschalten“ klicken.')],
-      'nicht-moeglich': [h('p', { class: 'push-stand blockiert' }, h('b', null, 'Dieser Browser kann keine Benachrichtigungen empfangen.')),
-        h('p', null, 'Nimm am Computer Safari, Chrome, Edge oder Firefox in einer aktuellen Version. Am iPhone geht es leider nicht.')],
-    }[stand];
-    fenster.replaceChildren(
-      h('div', { class: 'detail-kopf' },
-        h('div', null, h('p', { class: 'detail-name', id: 'push-titel' }, 'Alarm als Benachrichtigung'), h('p', { class: 'detail-unter' }, 'Auch wenn die Kampagnenanalyse nicht geöffnet ist')),
-        h('button', { class: 'knopf knopf-hell', type: 'button', onclick: () => fenster.close() }, 'Schließen')),
-      h('div', { class: 'push-inhalt' },
-        h('p', null, 'Wenn deine Kampagnen offline gehen, zeigt dein Computer eine Mitteilung, auch wenn diese Seite gerade nicht offen ist. Ein Klick darauf öffnet die Kampagnenanalyse.'),
-        h('ul', { class: 'push-liste' },
-          h('li', null, 'Wenn eine Prüfung einen neuen Alarm findet'),
-          h('li', null, 'Eine Erinnerung, wenn der Alarm bei einer späteren Prüfung (frühestens nach 3 Stunden) noch besteht'),
-          h('li', null, 'Eine Entwarnung, wenn die Kampagnen wieder laufen')),
-        h('p', { class: 'meta' }, 'Wichtig: Geprüft wird nur auf Knopfdruck („Jetzt prüfen“ oder „Daten von Meta holen“). Ohne Klick gibt es keine Prüfung und deshalb auch keine Benachrichtigung.'),
-        meldung && meldung.fehler ? h('p', { class: 'fehler-box' }, meldung.fehler) : null,
-        h('div', { class: 'push-box' }, STAND),
-        h('p', { class: 'push-zwischen' }, 'Gut zu wissen'),
-        h('ul', { class: 'push-liste klein' },
-          h('li', null, 'Am Mac müssen Mitteilungen für deinen Browser erlaubt sein: Systemeinstellungen → Mitteilungen → Safari bzw. Google Chrome. Stell dort den Stil auf „Hinweise“, dann bleibt der Alarm stehen, bis du ihn wegklickst.'),
-          h('li', null, 'Für den Ton schalte an derselben Stelle „Ton für Mitteilungen abspielen“ ein. Im Fokus-Modus „Nicht stören“ bleibt der Mac still.'),
-          h('li', null, 'Die Seite muss dafür nicht offen sein. Bei Chrome muss das Programm laufen, ein Fenster braucht es nicht. Safari zeigt die Mitteilung auch, wenn Safari ganz geschlossen ist.'),
-          h('li', null, 'Ist die Seite offen, erscheint zusätzlich sofort das rote Pop-up mit Sirene.'),
-          h('li', null, 'Jedes Gerät und jeder Browser wird einzeln eingeschaltet.'))));
-    if (!fenster.open) fenster.showModal();
-  }
-
-  async function richtePushEin() {
-    // Den Hintergrunddienst immer anmelden: Er holt auch die Startseite frisch,
-    // damit Neuerungen sofort sichtbar sind
-    if ('serviceWorker' in navigator && window.isSecureContext) dienstRegistrieren();
-    if (!pushMoeglich()) { push.an = false; zeigePushKnopf(); return; }
-    const { stand } = await pushStatus().catch(() => ({ stand: 'aus' }));
-    push.an = stand === 'an';
-    zeigePushKnopf();
-  }
-  $('#benachrichtigungen').addEventListener('click', () => zeichnePushFenster());
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (e) => {
-      if (!e.data || e.data.typ !== 'konto-pruefen' || $('#dashboard').hidden) return;
-      // gleich und nach gut einer Minute noch einmal (der Stand wird bis zu 60 s zwischengespeichert)
-      setTimeout(() => pruefeKonto(false), 3000);
-      setTimeout(() => pruefeKonto(false), 65000);
-    });
-  }
-  $('#push').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
   // ── Anmeldung ─────────────────────────────────────────────────────────────
   function zeige(angemeldet) {
     $('#login').hidden = angemeldet;
     $('#dashboard').hidden = !angemeldet;
     $('#daten-holen').hidden = !angemeldet;
-    if (angemeldet) { aktualisiere(); starteKontoPruefung(); richtePushEin(); } else { stoppeKontoPruefung(); abruf.laeuft = false; $('#benachrichtigungen').hidden = true; if ($('#push').open) $('#push').close(); $('#email').focus(); }
+    if (angemeldet) { aktualisiere(); starteKontoPruefung(); richteDienstEin(); } else { stoppeKontoPruefung(); abruf.laeuft = false; $('#email').focus(); }
   }
 
   $('#login-form').addEventListener('submit', async (ev) => {
