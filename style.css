@@ -163,6 +163,27 @@ input:focus, select:focus { border-color: var(--navy); outline: none; box-shadow
 .mit-bewegung .duell:not(.sichtbar) .tz-balken span { transform: scaleX(0); }
 .tz-zahlen { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, .85); }
 .tz-zahlen span:nth-child(2) { font-weight: 500; color: rgba(255, 255, 255, .55); text-align: center; }
+.kaempfer-vq { margin-top: 8px; align-self: flex-start; padding: 4px 10px; font-size: 13px; font-weight: 700; color: var(--weiss); background: rgba(47, 191, 113, .18); border: 1px solid rgba(47, 191, 113, .55); }
+.kaempfer.noah .kaempfer-vq { align-self: flex-end; }
+.kaempfer-vq b { font-size: 18px; color: #7ee2a8; }
+.kaempfer-vq.fuehrt { background: #2fbf71; border-color: #2fbf71; color: var(--navy-dunkel); }
+.kaempfer-vq.fuehrt b { color: var(--navy-dunkel); }
+.duell-stand .vq-name { color: #7ee2a8; }
+.duell-vergleich { max-width: 760px; margin: 18px auto 0; border-top: 1px solid rgba(255, 255, 255, .12); }
+.dv-zeile { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr); align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.dv-kopf { padding: 8px 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.dv-kopf .neele { color: #e0b35f; }
+.dv-kopf .noah { color: #8db8ea; }
+.dv-titel { text-align: center; font-size: 13px; color: rgba(255, 255, 255, .75); }
+.dv-wert { font-size: 18px; font-weight: 700; font-variant-numeric: lining-nums tabular-nums; color: rgba(255, 255, 255, .88); }
+.dv-wert.neele { text-align: right; }
+.dv-wert.noah { text-align: left; }
+.dv-wert.sieg { color: var(--weiss); }
+.dv-pokal { font-size: 14px; }
+.dv-zeile.vq { background: rgba(47, 191, 113, .1); }
+.dv-zeile.vq .dv-titel { color: #7ee2a8; font-weight: 700; }
+.dv-zeile.vq .dv-wert.sieg { color: #7ee2a8; }
+@media (max-width: 640px) { .dv-wert { font-size: 16px; } .dv-titel { font-size: 12px; } .kaempfer.noah .kaempfer-vq { align-self: flex-start; } }
 .duell-wertungen { list-style: none; margin: 18px 0 0; padding: 16px 0 0; border-top: 1px solid rgba(255, 255, 255, .12); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 18px; }
 .duell-wertungen li { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: rgba(255, 255, 255, .72); }
 .duell-wertungen b { font-size: 17px; color: var(--weiss); }

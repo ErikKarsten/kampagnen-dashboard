@@ -616,6 +616,41 @@
     if (!p.neele.anzeigen && !p.noah.anzeigen) return null;
     for (const wer of ['neele', 'noah']) p[wer].cpl = p[wer].leads ? p[wer].ausgaben / p[wer].leads : null;
 
+    // Vorqualifizierte je Person. Kandidatenwerk zählt pro Kampagne, nicht pro Anzeige.
+    // Laufen in einer Kampagne auch andere Anzeigen, wird nach den Meta-Leads aufgeteilt.
+    const Q = D.quali && D.quali.verknuepft.size ? D.quali : null;
+    let geschaetzt = false;
+    if (Q) {
+      const kampagnen = new Map();
+      for (const wer of ['neele', 'noah']) Object.assign(p[wer], { vq: 0, kw: 0, ausgabenQ: 0 });
+      for (const r of D.rows) {
+        const kid = String(r.kampagne_id || '');
+        if (!Q.verknuepft.has(kid)) continue;
+        const g = kampagnen.get(kid) || { leads: 0, neele: 0, noah: 0 };
+        const wer = personVon(r.typ);
+        g.leads += r.leads;
+        if (wer) { g[wer] += r.leads; p[wer].ausgabenQ += r.ausgaben; }
+        kampagnen.set(kid, g);
+      }
+      for (const [kid, g] of kampagnen) {
+        const q = Q.jeKampagne.get(kid);
+        if (!q || !q.gesamt || !g.leads) continue;
+        for (const wer of ['neele', 'noah']) {
+          if (!g[wer]) continue;
+          const anteil = g[wer] / g.leads;
+          if (anteil < 1) geschaetzt = true;
+          p[wer].vq += q.vq * anteil;
+          p[wer].kw += q.gesamt * anteil;
+        }
+      }
+      for (const wer of ['neele', 'noah']) {
+        p[wer].vq = Math.round(p[wer].vq);
+        p[wer].cpvq = p[wer].vq ? p[wer].ausgabenQ / p[wer].vq : null;
+        p[wer].quote = p[wer].kw >= 1 ? (100 * p[wer].vq) / p[wer].kw : null;
+      }
+    }
+    const ca = geschaetzt ? '≈\u00a0' : '';
+
     const summe = p.neele.leads + p.noah.leads;
     const vorne = p.neele.leads === p.noah.leads ? null : p.neele.leads > p.noah.leads ? 'neele' : 'noah';
     const hinten = vorne === 'neele' ? 'noah' : 'neele';
@@ -629,6 +664,7 @@
     const siege = { neele: tage.filter((t) => t.neele > t.noah).length, noah: tage.filter((t) => t.noah > t.neele).length };
     const nn = A.nn;
 
+    const vqVorne = !Q || p.neele.vq === p.noah.vq ? null : p.neele.vq > p.noah.vq ? 'neele' : 'noah';
     const kaempfer = (wer) => {
       const x = p[wer];
       const url = x.bestes && D.bilder.get(x.bestes.bild_pfad);
@@ -641,11 +677,28 @@
           h('span', { class: 'kaempfer-name' }, PERSONEN[wer]),
           h('span', { class: 'punktzahl' }, zaehler(x.leads)),
           h('span', { class: 'punkt-label' }, `${leadsWort(x.leads)} · ${x.anzeigen} ${x.anzeigen === 1 ? 'Video' : 'Videos'}`),
+          Q ? h('span', { class: 'kaempfer-vq' + (vqVorne === wer ? ' fuehrt' : '') }, h('b', null, `★ ${ca}${z0(x.vq)}`), ' vorqualifiziert') : null,
           vorher ? delta(x.leads, vorher, true, ['mehr', 'weniger'], false) : null));
     };
 
     const wertung = (titel, wert, zusatz) => h('li', null, h('span', null, titel), h('b', null, wert), zusatz ? h('small', null, zusatz) : null);
     const name = (wer) => PERSONEN[wer];
+
+    // Gegenüberstellung: Leads, Vorqualifizierte und was sie kosten
+    const sieger = (a, b, hoeherBesser) => (a == null || b == null || a === b ? null : (a > b) === hoeherBesser ? 'neele' : 'noah');
+    const zeile = (titel, a, b, format, hoeherBesser, klasse) => {
+      const s = hoeherBesser == null ? null : sieger(a, b, hoeherBesser);
+      const zelle = (wer, v) => h('span', { class: `dv-wert ${wer}${s === wer ? ' sieg' : ''}` }, v == null ? '–' : format(v), s === wer ? h('span', { class: 'dv-pokal', 'aria-label': 'besser' }, ' 🏆') : null);
+      return h('div', { class: 'dv-zeile' + (klasse ? ' ' + klasse : '') }, zelle('neele', a), h('span', { class: 'dv-titel' }, titel), zelle('noah', b));
+    };
+    const vergleich = h('div', { class: 'duell-vergleich', role: 'table', 'aria-label': 'Neele und Noah im Vergleich' },
+      h('div', { class: 'dv-zeile dv-kopf' }, h('span', { class: 'dv-wert neele' }, 'Neele'), h('span', { class: 'dv-titel' }, ''), h('span', { class: 'dv-wert noah' }, 'Noah')),
+      zeile('Leads', p.neele.leads, p.noah.leads, z0, true),
+      Q ? zeile('★ Vorqualifiziert', p.neele.vq, p.noah.vq, (v) => ca + z0(v), true, 'vq') : null,
+      zeile('Kosten pro Lead', p.neele.cpl, p.noah.cpl, euro, false),
+      Q ? zeile('Kosten pro vorqualifiziertem Lead', p.neele.cpvq, p.noah.cpvq, (v) => ca + euro(v), false, 'vq') : null,
+      Q ? zeile('Anteil vorqualifiziert', p.neele.quote, p.noah.quote, (v) => `${ca}${zahl.format(v)}\u00a0%`, true) : null,
+      zeile('Ausgegeben', p.neele.ausgaben, p.noah.ausgaben, euro, null));
 
     return h('section', { class: 'duell einblenden', 'aria-label': 'Duell Neele gegen Noah' },
       h('div', { class: 'duell-kopf' },
@@ -657,7 +710,10 @@
         kaempfer('noah')),
       h('p', { class: 'duell-stand' }, vorne
         ? [h('b', null, name(vorne)), ` führt mit ${z0(vorsprung)} ${leadsWort(vorsprung)} Vorsprung.`]
-        : 'Gleichstand!'),
+        : 'Gleichstand bei den Leads!',
+        Q ? (vqVorne
+          ? [' Bei den Vorqualifizierten liegt ', h('b', { class: 'vq-name' }, name(vqVorne)), ` vorn (${ca}${z0(p[vqVorne].vq)} zu ${z0(p[vqVorne === 'neele' ? 'noah' : 'neele'].vq)}).`]
+          : ' Bei den Vorqualifizierten steht es unentschieden.') : null),
       h('div', { class: 'tauziehen', role: 'img', 'aria-label': `Anteil an den Leads: Neele ${Math.round(anteil)} %, Noah ${Math.round(100 - anteil)} %` },
         h('div', { class: 'tz-balken' },
           h('span', { class: 'tz-neele', style: `width:${anteil.toFixed(1)}%` }),
@@ -666,14 +722,19 @@
           h('span', null, `Neele ${Math.round(anteil)}\u00a0%`),
           h('span', null, 'Anteil an den Leads'),
           h('span', null, `${Math.round(100 - anteil)}\u00a0% Noah`))),
+      vergleich,
       h('ul', { class: 'duell-wertungen' },
         wertung('🏆 Meiste Leads', vorne ? name(vorne) : 'Gleichstand', vorne ? `${z0(p[vorne].leads)} zu ${z0(p[hinten].leads)}` : `je ${z0(p.neele.leads)}`),
-        wertung('💶 Meiste Leads fürs Geld', fuersGeld == null ? 'noch offen' : fuersGeld === 'gleich' ? 'Gleichstand' : name(fuersGeld),
-          fuersGeld && fuersGeld !== 'gleich' ? `${euro(p[fuersGeld].cpl)} statt ${euro(p[fuersGeld === 'neele' ? 'noah' : 'neele'].cpl)} pro Lead` : null),
+        Q ? wertung('★ Meiste Vorqualifizierte', vqVorne ? name(vqVorne) : 'Gleichstand',
+          vqVorne ? `${ca}${z0(p[vqVorne].vq)} zu ${z0(p[vqVorne === 'neele' ? 'noah' : 'neele'].vq)}` : `je ${ca}${z0(p.neele.vq)}`)
+          : wertung('💶 Meiste Leads fürs Geld', fuersGeld == null ? 'noch offen' : fuersGeld === 'gleich' ? 'Gleichstand' : name(fuersGeld),
+            fuersGeld && fuersGeld !== 'gleich' ? `${euro(p[fuersGeld].cpl)} statt ${euro(p[fuersGeld === 'neele' ? 'noah' : 'neele'].cpl)} pro Lead` : null),
         wertung('📅 Tagessiege', `Neele ${siege.neele} : ${siege.noah} Noah`, 'Wer an einem Tag mehr Leads hatte'),
         wertung('📍 Regionen-Duell', nn.gesamt ? `Neele ${nn.neele} : ${nn.noah} Noah` : 'noch offen',
           nn.gesamt ? `Mehr Leads fürs Geld in ${nn.gesamt} Regionen` : 'Braucht Regionen, in denen beide laufen')),
-      h('p', { class: 'duell-fuss' }, 'Gezählt werden alle Videos mit Neele bzw. Noah, regional und bundesweit. Das Foto stammt aus dem jeweils erfolgreichsten Video.'));
+      h('p', { class: 'duell-fuss' }, 'Gezählt werden alle Videos mit Neele bzw. Noah, regional und bundesweit. Das Foto stammt aus dem jeweils erfolgreichsten Video.' +
+        (Q ? ' Vorqualifizierte laut Kandidatenwerk; die Kosten pro vorqualifiziertem Lead rechnen nur mit dem Geld aus Kampagnen, die mit Kandidatenwerk verknüpft sind.' : '') +
+        (geschaetzt ? ' ≈ heißt geschätzt: Kandidatenwerk zählt pro Kampagne. Laufen in einer Kampagne mehrere Videos, werden die Vorqualifizierten nach den Meta-Leads der Videos aufgeteilt.' : '')));
   }
 
   // ── Einstieg: So funktioniert der Bericht ─────────────────────────────────
