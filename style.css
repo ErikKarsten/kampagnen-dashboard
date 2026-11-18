@@ -271,16 +271,33 @@ input:focus, select:focus { border-color: var(--navy); outline: none; box-shadow
 .textlink:hover { border-bottom-color: var(--navy); }
 
 /* Lead-Qualität aus Kandidatenwerk */
-.qualitaet { margin-top: 20px; padding: 22px 24px; background: var(--weiss); box-shadow: var(--schatten); border-left: 5px solid var(--gut); }
-.q-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 14px; margin-bottom: 14px; }
-.q-kopf h3 { margin: 0; font-family: var(--serif); font-weight: 700; font-size: 18px; color: var(--navy); }
-.q-quelle { margin: 0; font-size: 13px; color: var(--leise); }
-.q-zahlen { display: grid; grid-template-columns: auto 1fr; gap: 14px 36px; align-items: center; }
-.q-haupt { display: flex; flex-direction: column; gap: 2px; font-size: 14px; font-weight: 600; color: var(--leise); }
-.q-wert { font-size: 52px; font-weight: 700; line-height: 1; color: var(--gut); letter-spacing: -.02em; }
-.q-neben { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; }
-.q-neben dt { font-size: 12px; font-weight: 700; color: var(--leise); }
-.q-neben dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; }
+.qualitaet { margin-top: 20px; background: var(--weiss); box-shadow: var(--schatten-hoch); scroll-margin-top: 80px; }
+.q-oben { position: relative; overflow: hidden; padding: 24px 28px 26px; background: var(--gut); color: var(--weiss); }
+.q-oben::before { content: ""; position: absolute; right: -80px; top: -20px; width: 240px; height: calc(100% + 40px); background: rgba(255, 255, 255, .07); transform: skewX(-24deg); pointer-events: none; }
+.q-unten { padding: 4px 28px 22px; }
+.q-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 14px; margin-bottom: 14px; }
+.q-marke { margin: 0; display: inline-block; padding: 4px 10px; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; background: var(--weiss); color: var(--gut); }
+.q-quelle { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .95); }
+.q-zahlen { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 16px 40px; align-items: end; }
+.q-haupt { display: flex; flex-direction: column; gap: 4px; }
+.q-titel { margin: 0; font-family: var(--serif); font-weight: 700; font-size: 20px; color: var(--weiss); }
+.q-wert { font-size: clamp(64px, 7vw, 92px); font-weight: 700; line-height: .95; letter-spacing: -.02em; }
+.q-wert-satz { font-size: 15px; font-weight: 600; color: rgba(255, 255, 255, .92); }
+.q-neben { margin: 0; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, .25); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; }
+.q-neben dt { font-size: 12px; font-weight: 700; color: rgba(255, 255, 255, .92); }
+.q-neben dd { margin: 2px 0 0; font-size: 19px; font-weight: 700; }
+.q-beste { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--linie); }
+.q-beste-titel { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--leise); }
+.q-beste ol { margin: 0 0 14px; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: platz; }
+.q-beste li { counter-increment: platz; }
+.q-beste-knopf { width: 100%; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding: 10px 14px; border: 0; border-left: 4px solid var(--gut); background: var(--gut-hell); color: var(--text); text-align: left; cursor: pointer; transition: background .2s; }
+.q-beste-knopf:hover { background: #d3eadc; }
+.q-beste-name { font-weight: 700; }
+.q-beste-name::before { content: counter(platz) ". "; color: var(--gut); }
+.q-beste-zahl { font-size: 14px; color: var(--leise); }
+.q-beste-zahl b { font-size: 17px; color: var(--gut); }
+.knopf-gruen { background: var(--gut); border-color: var(--gut); }
+.knopf-gruen:hover { background: #155e38; border-color: #155e38; }
 .q-balken { display: flex; gap: 2px; height: 8px; margin-top: 8px; background: transparent; }
 .q-balken.gross { height: 14px; margin-top: 18px; }
 .q-balken span { display: block; height: 100%; }
@@ -292,7 +309,24 @@ input:focus, select:focus { border-color: var(--navy); outline: none; box-shadow
 .q-schluessel:first-child { margin-left: 0; }
 .q-hinweis { margin: 12px 0 0; font-size: 13px; color: var(--leise); max-width: 95ch; }
 .quali-zeile { display: block; margin-top: 8px; padding: 8px 10px; background: var(--gut-hell); }
+.quali-zeile.leer { background: var(--neutral-hell); }
+.quali-zeile.leer .quali-text { color: var(--leise); font-weight: 600; }
 .quali-text { font-size: 13px; font-weight: 700; color: var(--gut); }
+.karte-zahlen { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 18px; }
+.anzeige-vq { margin-top: 10px; padding: 4px 10px 6px; font-size: 15px; font-weight: 700; color: var(--gut); background: var(--gut-hell); }
+.anzeige-vq b { margin-right: 4px; font-size: 36px; line-height: 1; letter-spacing: -.01em; }
+.anzeige-vq.null { color: var(--leise); background: var(--neutral-hell); }
+.vq-marke { position: absolute; z-index: 1; right: 10px; top: 10px; padding: 5px 10px; font-size: 13px; font-weight: 700; background: var(--gut); color: var(--weiss); box-shadow: 0 2px 10px rgba(0, 0, 0, .22); }
+.held-vq { position: relative; align-self: flex-start; display: inline-flex; align-items: center; gap: 12px; padding: 8px 16px 8px 12px; background: #2fbf71; color: var(--navy-dunkel); text-decoration: none; font-weight: 700; transition: transform .2s var(--tempo), background .2s; }
+.held-vq:hover { background: #46d084; transform: translateY(-1px); }
+.held-vq-zahl { font-size: 30px; line-height: 1; letter-spacing: -.01em; }
+.held-vq span:last-child { display: flex; flex-direction: column; font-size: 15px; line-height: 1.2; }
+.held-vq small { font-size: 12px; font-weight: 600; opacity: .85; }
+.dz-haupt { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+.dz-vq .dz-wert { color: var(--gut); }
+.dz-vq .dz-label { color: var(--gut); }
+th.vq-zelle, td.vq-zelle { background: var(--gut-hell); color: var(--gut); }
+td.vq-zelle b { font-size: 16px; }
 .quali-zeile .q-balken { margin-top: 6px; }
 .quali-fenster { margin-top: 4px; }
 .quali-fenster p { margin: 0; }
@@ -300,7 +334,7 @@ input:focus, select:focus { border-color: var(--navy); outline: none; box-shadow
 .quali-status div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--linie); font-size: 14px; }
 .quali-status dt { color: var(--leise); }
 .quali-status dd { margin: 0; font-weight: 700; font-variant-numeric: lining-nums tabular-nums; }
-@media (max-width: 760px) { .q-zahlen { grid-template-columns: 1fr; } .q-neben { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .q-zahlen { grid-template-columns: 1fr; } .q-neben { grid-template-columns: 1fr; } .q-oben { padding: 20px 18px 22px; } .q-unten { padding: 4px 18px 18px; } }
 
 /* Schritt 2: So entsteht ein Lead */
 .trichter-erkl { margin-bottom: 26px; padding: 22px 24px; background: var(--weiss); box-shadow: var(--schatten); }
@@ -654,3 +688,5 @@ details.detail-mehr summary { cursor: pointer; font-weight: 700; color: var(--na
   .alarm-knoepfe { padding: 8px 18px 20px; }
   .alarm-knoepfe .knopf { flex: 1 1 100%; }
 }
+.quali-status .ist-vq { padding: 6px 8px; background: var(--gut-hell); border-bottom-color: var(--gut); }
+.quali-status .ist-vq dt, .quali-status .ist-vq dd { color: var(--gut); font-weight: 700; }
