@@ -711,3 +711,6 @@ details.detail-mehr summary { cursor: pointer; font-weight: 700; color: var(--na
 }
 .quali-status .ist-vq { padding: 6px 8px; background: var(--gut-hell); border-bottom-color: var(--gut); }
 .quali-status .ist-vq dt, .quali-status .ist-vq dd { color: var(--gut); font-weight: 700; }
+.knopf-daten { background: var(--beige); color: var(--navy-dunkel); border-color: var(--beige); }
+.knopf-daten:hover { background: var(--weiss); border-color: var(--weiss); color: var(--navy-dunkel); }
+.knopf-daten:disabled { opacity: .85; cursor: progress; }

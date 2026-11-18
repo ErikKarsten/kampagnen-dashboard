@@ -239,7 +239,7 @@
 
   // ── Anzeige-Namen kurz und verständlich ───────────────────────────────────
   // ── Lead-Qualität aus Kandidatenwerk ──────────────────────────────────────
-  // Das Meta-Analyse-Tool liest stündlich aus Kandidatenwerk, wie viele Meta-Leads
+  // Das Meta-Analyse-Tool liest bei jeder Konto-Prüfung aus Kandidatenwerk, wie viele Meta-Leads
   // je Kampagne und Tag welchen Status haben (nur Zahlen, siehe Repo Meta-Analyse-Tool,
   // scripts/kandidatenwerk-sync.mjs). Kandidatenwerk ordnet Leads der Kampagne zu,
   // nicht der einzelnen Anzeige.
@@ -1368,7 +1368,8 @@
       inhalt.replaceChildren(leer('Noch keine Daten. Der Abruf von Meta ist vermutlich noch nicht gelaufen.'));
       return;
     }
-    $('#zeitraum').textContent = `${datum(D.von)} bis ${datum(D.bis)}` + (D.abgerufen ? ` · zuletzt aktualisiert am ${datum(D.abgerufen)}` : '');
+    $('#zeitraum').textContent = `${datum(D.von)} bis ${datum(D.bis)}` + (D.abgerufen ? ` · Daten von Meta geholt ${zeitpunkt(D.abgerufen)}` : '');
+    zeichneDatenKnopf();
     const A = auswerten(D);
     inhalt.replaceChildren(...[
       anzeigetafel(D, A),
@@ -1460,14 +1461,13 @@
   zeigeZeitraum();
 
   // ── Konto-Alarm: Ausgabenlimit erreicht oder Kampagnen offline ───────────
-  // Jede Minute fragt die Seite live bei Meta nach, über die Supabase-Funktion
-  // „konto-live“ (Repo Meta-Analyse-Tool). Gibt es die Funktion noch nicht oder
-  // klappt es gerade nicht, nimmt sie den Stand der stündlichen Prüfung aus
-  // _konto/status.json im privaten Speicher „motive“. Fehlt beides, passiert nichts.
-  // „Jetzt prüfen“ startet ohne Live-Funktion eine echte Prüfung über GitHub
-  // (Workflow konto-check.yml), wenn dort ein eingeschränkter Schlüssel hinterlegt
-  // ist (_konto/pruef-zugang.json, nur für angemeldete Nutzer lesbar).
-  const PRUEF_ABSTAND_MS = 60 * 1000;
+  // Nichts läuft automatisch: Geprüft und abgerufen wird nur auf Knopfdruck.
+  // Beim Öffnen zeigt die Seite den Stand der letzten Prüfung aus _konto/status.json
+  // im privaten Speicher „motive“. „Jetzt prüfen“ fragt die Supabase-Funktion
+  // „konto-live“ (falls eingespielt) oder startet die Prüfung über GitHub
+  // (Workflow konto-check.yml). „Daten von Meta holen“ startet den Meta-Abruf
+  // (meta-sync.yml) und die Prüfung. Beides braucht den eingeschränkten Schlüssel
+  // aus _konto/pruef-zugang.json (nur für angemeldete Nutzer lesbar).
   const GITHUB_WARTEN_MS = 4 * 60 * 1000;   // so lange auf das Ergebnis warten
   const GITHUB_TAKT_MS = 8 * 1000;          // so oft nachsehen, ob es da ist
   const SEITENTITEL = document.title;
@@ -1531,39 +1531,43 @@
     return k && k.geprueft_am ? k : null;
   }
 
-  // Prüfung über GitHub starten. Liefert null bei Erfolg, sonst einen Satz, was nicht ging.
-  async function starteGithubPruefung(z) {
+  // Einen Ablauf in GitHub starten (konto-check.yml oder meta-sync.yml).
+  // Liefert null bei Erfolg, sonst einen Satz, was nicht ging.
+  async function starteWorkflow(z, datei, eingaben) {
     let r;
     try {
-      r = await fetch(`https://api.github.com/repos/${z.repo}/actions/workflows/${z.workflow || 'konto-check.yml'}/dispatches`, {
+      r = await fetch(`https://api.github.com/repos/${z.repo}/actions/workflows/${datei}/dispatches`, {
         method: 'POST',
         headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${z.token}`, 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ref: z.ref || 'main' }),
+        body: JSON.stringify(eingaben ? { ref: z.ref || 'main', inputs: eingaben } : { ref: z.ref || 'main' }),
       });
     } catch (e) {
       return 'GitHub ist gerade nicht erreichbar. Prüf die Internetverbindung und versuch es gleich noch einmal.';
     }
     if (r.ok) return null;
-    if (r.status === 401) return 'Der GitHub-Schlüssel für „Jetzt prüfen“ ist abgelaufen oder ungültig. Leg einen neuen an und speichere ihn in GitHub als PRUEF_TOKEN.';
-    if (r.status === 403 || r.status === 404) return 'Der GitHub-Schlüssel für „Jetzt prüfen“ darf keine Prüfung starten. Er braucht beim Repo Meta-Analyse-Tool die Berechtigung „Actions: Read and write“.';
-    return `GitHub hat die Prüfung gerade nicht angenommen (Fehler ${r.status}). Versuch es gleich noch einmal.`;
+    if (r.status === 401) return 'Der GitHub-Schlüssel für die Knöpfe ist abgelaufen oder ungültig. Leg einen neuen an und speichere ihn in GitHub als PRUEF_TOKEN.';
+    if (r.status === 403 || r.status === 404) return 'Der GitHub-Schlüssel für die Knöpfe darf nichts starten. Er braucht beim Repo Meta-Analyse-Tool die Berechtigung „Actions: Read and write“.';
+    return `GitHub hat den Start gerade nicht angenommen (Fehler ${r.status}). Versuch es gleich noch einmal.`;
   }
+  const starteGithubPruefung = (z) => starteWorkflow(z, z.workflow || 'konto-check.yml');
+  const NICHT_EINGERICHTET = 'Die Knöpfe sind noch nicht eingerichtet: In GitHub fehlt der Schlüssel PRUEF_TOKEN (Repo Meta-Analyse-Tool).';
 
   const warte = (ms) => new Promise((fertig) => setTimeout(fertig, ms));
 
-  async function githubPruefung(zugang) {
+  // leise: zusammen mit „Daten von Meta holen“ gestartet, ohne eigene Meldungen
+  async function githubPruefung(zugang, leise) {
     const seit = Date.now();
     alarm.github = { seit };
     const fenster = $('#alarm');
     const warOffen = fenster.open;
     if (warOffen) fenster.close(); // damit man oben sieht, dass geprüft wird
     zeigeKontoStand();
-    zeigeKontoMeldung('⏳ Prüfung gestartet: Meta wird jetzt abgefragt. Das dauert etwa 1 Minute, du kannst die Seite einfach offen lassen.', 'hinweis', true);
+    if (!leise) zeigeKontoMeldung('⏳ Prüfung gestartet: Meta wird jetzt abgefragt. Das dauert etwa 1 Minute, du kannst die Seite einfach offen lassen.', 'hinweis', true);
     const fehler = await starteGithubPruefung(zugang);
     if (fehler) {
       alarm.github = null;
       zeigeKontoStand();
-      zeigeKontoMeldung(fehler, 'hinweis');
+      if (!leise) zeigeKontoMeldung(fehler, 'hinweis');
       return;
     }
     while (Date.now() - seit < GITHUB_WARTEN_MS) {
@@ -1579,12 +1583,12 @@
       if (b && b.stufe === 'alarm') zeigeAlarmFenster();
       else if (fenster.open && !b) fenster.close();
       const ergebnis = !b ? 'Alles in Ordnung, das Werbekonto läuft.' : b.stufe === 'alarm' ? 'Die Kampagnen sind weiterhin offline.' : 'Es gibt eine Warnung, Details in der gelben Leiste.';
-      zeigeKontoMeldung(`✓ Gerade bei Meta geprüft (${zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '')}). ${ergebnis}`, b ? 'hinweis' : 'gut');
+      if (!leise) zeigeKontoMeldung(`✓ Gerade bei Meta geprüft (${zeitpunkt(k.geprueft_am, k.zeitzone).replace(/^heute /, '')}). ${ergebnis}`, b ? 'hinweis' : 'gut');
       return;
     }
     alarm.github = null;
     zeigeKontoStand();
-    zeigeKontoMeldung('Die Prüfung dauert länger als sonst (GitHub ist gerade langsam). Das Ergebnis erscheint von selbst, sobald es da ist, die Seite schaut jede Minute nach.', 'hinweis');
+    if (!leise) zeigeKontoMeldung('Die Prüfung dauert länger als sonst (GitHub ist gerade langsam). Lade die Seite in ein paar Minuten neu, dann ist das Ergebnis da.', 'hinweis');
     if (warOffen && alarm.befund) zeigeAlarmFenster();
   }
 
@@ -1722,8 +1726,8 @@
         b.nachher ? h('p', null, b.nachher) : null,
         h('p', { class: 'meta' }, alarm.quelle === 'live'
           ? `Live geprüft: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Die Seite prüft jede Minute neu.`
-          : `Stand: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Das Werbekonto wird stündlich von 6 bis 23 Uhr geprüft.`),
-        alt ? h('p', { class: 'meta' }, 'Die letzte Prüfung ist schon länger her. Vielleicht ist das Problem inzwischen behoben.') : null,
+          : `Stand: ${zeitpunkt(k.geprueft_am, k.zeitzone)}. Geprüft wird nur, wenn jemand auf „Jetzt prüfen“ oder „Daten von Meta holen“ klickt.`),
+        alt ? h('p', { class: 'meta' }, 'Die letzte Prüfung ist schon länger her. Vielleicht ist das Problem inzwischen behoben. Klick auf „Jetzt prüfen“, um den aktuellen Stand zu sehen.') : null,
         istAlarm && !push.an && pushMoeglich() ? h('p', { class: 'push-tipp' }, 'Diesen Alarm auch bekommen, wenn die Seite zu ist? ',
           h('button', { class: 'textknopf', type: 'button', onclick: () => { fenster.close(); zeichnePushFenster(); } }, 'Benachrichtigungen einschalten')) : null),
       h('div', { class: 'alarm-knoepfe' },
@@ -1794,9 +1798,9 @@
     const ergebnis = !alarm.befund ? 'Alles in Ordnung, das Werbekonto läuft.' : alarm.befund.stufe === 'alarm' ? 'Die Kampagnen sind offline.' : 'Es gibt eine Warnung, Details in der gelben Leiste.';
     let text;
     if (alarm.quelle === 'live') text = `✓ Gerade live bei Meta geprüft. ${ergebnis}`;
-    else if (alarm.live === false) text = `„Jetzt prüfen“ ist noch nicht eingerichtet. Du siehst den Stand der stündlichen Prüfung${uhr ? ` von ${uhr}` : ''}. Neue Werte kommen mit der nächsten Prüfung (jede Stunde um :17).`;
+    else if (alarm.live === false) text = `${NICHT_EINGERICHTET} Du siehst den Stand der letzten Prüfung${uhr ? ` von ${uhr}` : ''}.`;
     else if (alarm.fehler) text = `Die Live-Prüfung hat gerade nicht geklappt (${alarm.fehler}). Du siehst den Stand${uhr ? ` von ${uhr}` : ''}.`;
-    else text = k ? `Stand der stündlichen Prüfung${uhr ? ` von ${uhr}` : ''}.` : 'Noch keine Prüfung vorhanden.';
+    else text = k ? `Stand der letzten Prüfung${uhr ? ` von ${uhr}` : ''}.` : 'Noch keine Prüfung vorhanden.';
     zeigeKontoMeldung(text, alarm.quelle === 'live' ? 'gut' : 'hinweis');
   }
 
@@ -1816,7 +1820,7 @@
     zeigeKontoStand();
     let k = null;
     try {
-      k = await ladeKontoLive(erzwingen);
+      k = erzwingen ? await ladeKontoLive(true) : null; // bei Meta nur auf Knopfdruck
       alarm.quelle = k ? 'live' : null;
       if (!k) { k = await ladeKontoStatus(); alarm.quelle = k ? 'datei' : null; }
     } finally {
@@ -1837,13 +1841,13 @@
     alarm.gezeigt = b && b.stufe === 'alarm' ? b.schluessel : null;
   }
 
+  // Beim Öffnen nur den gespeicherten Stand der letzten Prüfung zeigen (Meta wird nicht gefragt)
   function starteKontoPruefung() {
     stoppeKontoPruefung();
+    alarm.timer = true;
     pruefeKonto(true);
-    alarm.timer = setInterval(() => pruefeKonto(false), PRUEF_ABSTAND_MS);
   }
   function stoppeKontoPruefung() {
-    if (alarm.timer) clearInterval(alarm.timer);
     alarm.timer = null;
     alarm.konto = null;
     alarm.gezeigt = null;
@@ -1853,13 +1857,76 @@
     zeigeKontoStand();
     if ($('#alarm').open) $('#alarm').close();
   }
-  // Zurück im Tab: sofort neu prüfen, wenn der letzte Stand älter als eine halbe Minute ist
+  // Zurück im Tab: den gespeicherten Stand neu lesen (vielleicht hat jemand anders geprüft).
+  // Das fragt nicht bei Meta nach, sondern liest nur die Datei der letzten Prüfung.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden || !alarm.timer) return;
-    if (!alarm.konto || Date.now() - new Date(alarm.konto.geprueft_am).getTime() > 30 * 1000) pruefeKonto(false);
+    if (document.hidden || !alarm.timer || alarm.github) return;
+    pruefeKonto(false);
   });
   $('#alarm').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
   $('#alarm').addEventListener('close', () => stoppeAlarmton());
+
+  // ── Daten von Meta holen (nur auf Knopfdruck) ─────────────────────────────
+  // Startet in GitHub den Meta-Abruf und die Konto-Prüfung und wartet, bis der
+  // Abruf fertig in sync_laeufe steht. Dann lädt die Seite die neuen Zahlen.
+  const ABRUF_WARTEN_MS = 10 * 60 * 1000;
+  const ABRUF_TAKT_MS = 10 * 1000;
+  const abruf = { laeuft: false, seit: null };
+
+  function zeichneDatenKnopf() {
+    const knopf = $('#daten-holen');
+    knopf.disabled = abruf.laeuft;
+    knopf.textContent = abruf.laeuft ? 'Daten werden geholt …' : '↻ Daten von Meta holen';
+  }
+
+  async function letzterAbruf() {
+    const { data } = await db.from('sync_laeufe').select('status, nachricht, beendet_am').eq('art', 'meta').not('beendet_am', 'is', null)
+      .order('beendet_am', { ascending: false }).limit(1);
+    return data && data[0] ? data[0] : null;
+  }
+
+  async function datenHolen() {
+    if (abruf.laeuft) return;
+    const zugang = await ladeSpeicherJson('_konto/pruef-zugang.json');
+    if (!zugang || !zugang.token || !zugang.repo) { zeigeKontoMeldung(NICHT_EINGERICHTET, 'hinweis'); return; }
+    // So viele Tage abrufen, dass seit dem letzten Abruf keine Lücke bleibt (mindestens 3, höchstens 90)
+    const D = zustand.daten;
+    const seitLetztem = D && D.abgerufen ? Math.ceil((Date.now() - new Date(D.abgerufen).getTime()) / 864e5) + 2 : 90;
+    const tage = Math.min(90, Math.max(3, seitLetztem));
+    abruf.laeuft = true;
+    abruf.seit = Date.now();
+    zeichneDatenKnopf();
+    zeigeKontoMeldung('⏳ Die Daten werden jetzt bei Meta geholt. Das dauert etwa 2 Minuten, du kannst die Seite einfach offen lassen.', 'hinweis', true);
+    const fehler = await starteWorkflow(zugang, 'meta-sync.yml', { tage: String(tage) });
+    if (fehler) { abruf.laeuft = false; zeichneDatenKnopf(); zeigeKontoMeldung(fehler, 'hinweis'); return; }
+    // Die Konto-Prüfung gleich mitlaufen lassen (Alarm, Lead-Qualität aus Kandidatenwerk)
+    if (!alarm.github) githubPruefung(zugang, true);
+    try {
+      while (Date.now() - abruf.seit < ABRUF_WARTEN_MS) {
+        await warte(ABRUF_TAKT_MS);
+        if (!abruf.laeuft) return; // abgemeldet
+        let l = null;
+        try { l = await letzterAbruf(); } catch (e) { /* gleich noch einmal */ }
+        if (!l || new Date(l.beendet_am).getTime() < abruf.seit - 30 * 1000) continue;
+        abruf.laeuft = false;
+        zeichneDatenKnopf();
+        if (l.status === 'fertig') {
+          await aktualisiere();
+          zeigeKontoMeldung('✓ Neue Daten von Meta geholt. Die Seite zeigt jetzt den aktuellen Stand.', 'gut');
+        } else {
+          zeigeKontoMeldung(`Der Abruf bei Meta hat nicht geklappt${l.nachricht ? ` (${l.nachricht})` : ''}. Versuch es gleich noch einmal.`, 'hinweis');
+        }
+        return;
+      }
+      abruf.laeuft = false;
+      zeichneDatenKnopf();
+      zeigeKontoMeldung('Der Abruf dauert länger als sonst. Lade die Seite in ein paar Minuten neu, dann sind die neuen Daten da.', 'hinweis');
+    } finally {
+      abruf.laeuft = false;
+      zeichneDatenKnopf();
+    }
+  }
+  $('#daten-holen').addEventListener('click', () => datenHolen());
 
   // ── Alarmton ──────────────────────────────────────────────────────────────
   // Eine kurze Sirene aus zwei Tönen. Die Seite erzeugt sie selbst als WAV-Datei
@@ -2120,10 +2187,10 @@
       h('div', { class: 'push-inhalt' },
         h('p', null, 'Wenn deine Kampagnen offline gehen, zeigt dein Computer eine Mitteilung, auch wenn diese Seite gerade nicht offen ist. Ein Klick darauf öffnet die Kampagnenanalyse.'),
         h('ul', { class: 'push-liste' },
-          h('li', null, 'Sofort, wenn ein Alarm neu auftritt'),
-          h('li', null, 'Alle 3 Stunden eine Erinnerung, solange er besteht'),
+          h('li', null, 'Wenn eine Prüfung einen neuen Alarm findet'),
+          h('li', null, 'Eine Erinnerung, wenn der Alarm bei einer späteren Prüfung (frühestens nach 3 Stunden) noch besteht'),
           h('li', null, 'Eine Entwarnung, wenn die Kampagnen wieder laufen')),
-        h('p', { class: 'meta' }, 'Geprüft wird stündlich von 6 bis 23 Uhr.'),
+        h('p', { class: 'meta' }, 'Wichtig: Geprüft wird nur auf Knopfdruck („Jetzt prüfen“ oder „Daten von Meta holen“). Ohne Klick gibt es keine Prüfung und deshalb auch keine Benachrichtigung.'),
         meldung && meldung.fehler ? h('p', { class: 'fehler-box' }, meldung.fehler) : null,
         h('div', { class: 'push-box' }, STAND),
         h('p', { class: 'push-zwischen' }, 'Gut zu wissen'),
@@ -2160,7 +2227,8 @@
   function zeige(angemeldet) {
     $('#login').hidden = angemeldet;
     $('#dashboard').hidden = !angemeldet;
-    if (angemeldet) { aktualisiere(); starteKontoPruefung(); richtePushEin(); } else { stoppeKontoPruefung(); $('#benachrichtigungen').hidden = true; if ($('#push').open) $('#push').close(); $('#email').focus(); }
+    $('#daten-holen').hidden = !angemeldet;
+    if (angemeldet) { aktualisiere(); starteKontoPruefung(); richtePushEin(); } else { stoppeKontoPruefung(); abruf.laeuft = false; $('#benachrichtigungen').hidden = true; if ($('#push').open) $('#push').close(); $('#email').focus(); }
   }
 
   $('#login-form').addEventListener('submit', async (ev) => {
